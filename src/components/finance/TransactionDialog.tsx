@@ -58,13 +58,16 @@ export function TransactionDialog() {
   };
 
   const submit = async () => {
-    if (!user) return toast.error("Sessão expirada.");
-    if (!entityId) return toast.error("Selecione a entidade financeira.");
-    if (!description.trim()) return toast.error("Informe a descrição.");
+    const fail = (m: string) => {
+      toast.error(m);
+    };
+    if (!user) return fail("Sessão expirada.");
+    if (!entityId) return fail("Selecione a entidade financeira.");
+    if (!description.trim()) return fail("Informe a descrição.");
     const value = Number(amount.replace(",", "."));
-    if (!Number.isFinite(value) || value <= 0) return toast.error("Informe um valor válido.");
-    if (!accountId) return toast.error("Selecione a conta de origem.");
-    if (kind === "transfer" && !toAccountId) return toast.error("Selecione a conta de destino.");
+    if (!Number.isFinite(value) || value <= 0) return fail("Informe um valor válido.");
+    if (!accountId) return fail("Selecione a conta de origem.");
+    if (kind === "transfer" && !toAccountId) return fail("Selecione a conta de destino.");
 
     setBusy(true);
     const total = Math.max(1, Number(installments) || 1);
