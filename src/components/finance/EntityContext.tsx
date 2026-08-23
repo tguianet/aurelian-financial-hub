@@ -22,9 +22,19 @@ export function EntityProvider({ children }: { children: ReactNode }) {
     if (saved) setEntityIdState(saved);
   }, []);
 
+  useEffect(() => {
+    if (isLoading || entityId === ALL) return;
+    const stillExists = data.entities.some((e) => e.id === entityId);
+    if (!stillExists) {
+      setEntityIdState(ALL);
+      window.localStorage.setItem(STORAGE_KEY, ALL);
+    }
+  }, [data.entities, entityId, isLoading]);
+
   const setEntityId = (id: string) => {
-    setEntityIdState(id);
-    window.localStorage.setItem(STORAGE_KEY, id);
+    const next = id === ALL || data.entities.some((e) => e.id === id) ? id : ALL;
+    setEntityIdState(next);
+    window.localStorage.setItem(STORAGE_KEY, next);
   };
 
   const entityName = useMemo(() => {
