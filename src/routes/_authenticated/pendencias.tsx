@@ -6,8 +6,9 @@ import { createFileRouteHead } from "@/lib/head";
 import { supabase } from "@/integrations/supabase/client";
 import { useRefreshFinance } from "@/hooks/useFinance";
 import { useEntityScope } from "@/components/finance/EntityContext";
-import { DemoNotice, PageHeader } from "@/components/finance/PageHeader";
-import { DemoTag, StatusPill, Td, Th } from "./lancamentos";
+import { PageHeader } from "@/components/finance/PageHeader";
+import { TransactionDialog } from "@/components/finance/TransactionDialog";
+import { StatusPill, Td, Th } from "./lancamentos";
 import { KpiCard } from "@/components/finance/KpiCard";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -57,8 +58,15 @@ function Pendencias() {
 
   return (
     <div>
-      <PageHeader title="Contas a pagar e receber" subtitle={entityName} />
-      <DemoNotice />
+      <PageHeader
+        title="Contas a pagar e receber"
+        subtitle={entityName}
+        action={<TransactionDialog />}
+      />
+
+      <div className="mb-4 rounded-lg border border-border bg-surface/60 px-4 py-3 text-xs text-muted-foreground">
+        Para criar uma conta futura, use <strong className="text-foreground">Novo lançamento</strong> e deixe o status como Pendente ou Vencido. Entradas viram contas a receber; saídas viram contas a pagar.
+      </div>
 
       <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label="Total a pagar" value={brl(sum(payables))} tone="negative" />
@@ -102,21 +110,12 @@ function Pendencias() {
               )
               .map((t) => (
                 <tr key={t.id} className="border-b border-border/60 last:border-0 hover:bg-surface">
-                  <Td>
-                    <div className="flex items-center gap-2">
-                      {t.description}
-                      {t.is_demo ? <DemoTag /> : null}
-                    </div>
-                  </Td>
+                  <Td>{t.description}</Td>
                   <Td>{data.entities.find((e) => e.id === t.entity_id)?.name ?? "—"}</Td>
                   <Td>{data.categories.find((c) => c.id === t.category_id)?.name ?? "—"}</Td>
                   <Td>{fmtDate(t.due_date ?? t.competence_date)}</Td>
                   <Td><StatusPill status={t.status} /></Td>
-                  <Td
-                    className={`num text-right font-medium ${
-                      t.kind === "income" ? "text-success" : "text-destructive"
-                    }`}
-                  >
+                  <Td className={`num text-right font-medium ${t.kind === "income" ? "text-success" : "text-destructive"}`}>
                     {brl(Number(t.amount))}
                   </Td>
                   <Td className="text-right">
@@ -130,9 +129,7 @@ function Pendencias() {
               ))}
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={7} className="p-8 text-center text-sm text-muted-foreground">
-                  Nenhuma pendência.
-                </td>
+                <td colSpan={7} className="p-8 text-center text-sm text-muted-foreground">Nenhuma pendência.</td>
               </tr>
             ) : null}
           </tbody>
