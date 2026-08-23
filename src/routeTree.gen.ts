@@ -17,7 +17,10 @@ import { Route as AuthenticatedContasRouteImport } from './routes/_authenticated
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedEntidadesRouteImport } from './routes/_authenticated/entidades'
 import { Route as AuthenticatedLancamentosRouteImport } from './routes/_authenticated/lancamentos'
+import { Route as AuthenticatedOrcamentoRouteImport } from './routes/_authenticated/orcamento'
 import { Route as AuthenticatedPendenciasRouteImport } from './routes/_authenticated/pendencias'
+import { Route as AuthenticatedProjecaoRouteImport } from './routes/_authenticated/projecao'
+import { Route as AuthenticatedReservasRouteImport } from './routes/_authenticated/reservas'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -59,9 +62,24 @@ const AuthenticatedLancamentosRoute =
     path: '/lancamentos',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedOrcamentoRoute = AuthenticatedOrcamentoRouteImport.update({
+  id: '/orcamento',
+  path: '/orcamento',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedPendenciasRoute = AuthenticatedPendenciasRouteImport.update({
   id: '/pendencias',
   path: '/pendencias',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedProjecaoRoute = AuthenticatedProjecaoRouteImport.update({
+  id: '/projecao',
+  path: '/projecao',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedReservasRoute = AuthenticatedReservasRouteImport.update({
+  id: '/reservas',
+  path: '/reservas',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 
@@ -73,7 +91,10 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/entidades': typeof AuthenticatedEntidadesRoute
   '/lancamentos': typeof AuthenticatedLancamentosRoute
+  '/orcamento': typeof AuthenticatedOrcamentoRoute
   '/pendencias': typeof AuthenticatedPendenciasRoute
+  '/projecao': typeof AuthenticatedProjecaoRoute
+  '/reservas': typeof AuthenticatedReservasRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -83,7 +104,10 @@ export interface FileRoutesByTo {
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/entidades': typeof AuthenticatedEntidadesRoute
   '/lancamentos': typeof AuthenticatedLancamentosRoute
+  '/orcamento': typeof AuthenticatedOrcamentoRoute
   '/pendencias': typeof AuthenticatedPendenciasRoute
+  '/projecao': typeof AuthenticatedProjecaoRoute
+  '/reservas': typeof AuthenticatedReservasRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -95,7 +119,10 @@ export interface FileRoutesById {
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/entidades': typeof AuthenticatedEntidadesRoute
   '/_authenticated/lancamentos': typeof AuthenticatedLancamentosRoute
+  '/_authenticated/orcamento': typeof AuthenticatedOrcamentoRoute
   '/_authenticated/pendencias': typeof AuthenticatedPendenciasRoute
+  '/_authenticated/projecao': typeof AuthenticatedProjecaoRoute
+  '/_authenticated/reservas': typeof AuthenticatedReservasRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -107,7 +134,10 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/entidades'
     | '/lancamentos'
+    | '/orcamento'
     | '/pendencias'
+    | '/projecao'
+    | '/reservas'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -117,7 +147,10 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/entidades'
     | '/lancamentos'
+    | '/orcamento'
     | '/pendencias'
+    | '/projecao'
+    | '/reservas'
   id:
     | '__root__'
     | '/'
@@ -128,7 +161,10 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard'
     | '/_authenticated/entidades'
     | '/_authenticated/lancamentos'
+    | '/_authenticated/orcamento'
     | '/_authenticated/pendencias'
+    | '/_authenticated/projecao'
+    | '/_authenticated/reservas'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -195,11 +231,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedLancamentosRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/orcamento': {
+      id: '/_authenticated/orcamento'
+      path: '/orcamento'
+      fullPath: '/orcamento'
+      preLoaderRoute: typeof AuthenticatedOrcamentoRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/pendencias': {
       id: '/_authenticated/pendencias'
       path: '/pendencias'
       fullPath: '/pendencias'
       preLoaderRoute: typeof AuthenticatedPendenciasRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/projecao': {
+      id: '/_authenticated/projecao'
+      path: '/projecao'
+      fullPath: '/projecao'
+      preLoaderRoute: typeof AuthenticatedProjecaoRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/reservas': {
+      id: '/_authenticated/reservas'
+      path: '/reservas'
+      fullPath: '/reservas'
+      preLoaderRoute: typeof AuthenticatedReservasRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
   }
@@ -211,7 +268,10 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedEntidadesRoute: typeof AuthenticatedEntidadesRoute
   AuthenticatedLancamentosRoute: typeof AuthenticatedLancamentosRoute
+  AuthenticatedOrcamentoRoute: typeof AuthenticatedOrcamentoRoute
   AuthenticatedPendenciasRoute: typeof AuthenticatedPendenciasRoute
+  AuthenticatedProjecaoRoute: typeof AuthenticatedProjecaoRoute
+  AuthenticatedReservasRoute: typeof AuthenticatedReservasRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
@@ -220,7 +280,10 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedEntidadesRoute: AuthenticatedEntidadesRoute,
   AuthenticatedLancamentosRoute: AuthenticatedLancamentosRoute,
+  AuthenticatedOrcamentoRoute: AuthenticatedOrcamentoRoute,
   AuthenticatedPendenciasRoute: AuthenticatedPendenciasRoute,
+  AuthenticatedProjecaoRoute: AuthenticatedProjecaoRoute,
+  AuthenticatedReservasRoute: AuthenticatedReservasRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =

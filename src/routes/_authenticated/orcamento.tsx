@@ -38,7 +38,7 @@ function Orcamento() {
           label="Diferença"
           value={brl(planned - actual)}
           tone={planned - actual >= 0 ? "positive" : "negative"}
-          hint={planned > 0 ? `${pct(actual / planned)} do orçamento utilizado` : undefined}
+          hint={planned > 0 ? `${pct(actual / planned)} do orçamento utilizado` : "Sem orçamento"}
         />
       </div>
 
