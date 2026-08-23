@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
+import { Route as AuthenticatedEntidadesRouteImport } from './routes/_authenticated/entidades'
 import { Route as AuthenticatedLancamentosRouteImport } from './routes/_authenticated/lancamentos'
 
 const IndexRoute = IndexRouteImport.update({
@@ -34,6 +35,11 @@ const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedEntidadesRoute = AuthenticatedEntidadesRouteImport.update({
+  id: '/entidades',
+  path: '/entidades',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedLancamentosRoute =
   AuthenticatedLancamentosRouteImport.update({
     id: '/lancamentos',
@@ -45,12 +51,14 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/entidades': typeof AuthenticatedEntidadesRoute
   '/lancamentos': typeof AuthenticatedLancamentosRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/entidades': typeof AuthenticatedEntidadesRoute
   '/lancamentos': typeof AuthenticatedLancamentosRoute
 }
 export interface FileRoutesById {
@@ -59,19 +67,21 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
+  '/_authenticated/entidades': typeof AuthenticatedEntidadesRoute
   '/_authenticated/lancamentos': typeof AuthenticatedLancamentosRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/auth' | '/dashboard' | '/lancamentos'
+  fullPaths: '/' | '/auth' | '/dashboard' | '/entidades' | '/lancamentos'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/auth' | '/dashboard' | '/lancamentos'
+  to: '/' | '/auth' | '/dashboard' | '/entidades' | '/lancamentos'
   id:
     | '__root__'
     | '/'
     | '/_authenticated'
     | '/auth'
     | '/_authenticated/dashboard'
+    | '/_authenticated/entidades'
     | '/_authenticated/lancamentos'
   fileRoutesById: FileRoutesById
 }
@@ -111,6 +121,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDashboardRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/entidades': {
+      id: '/_authenticated/entidades'
+      path: '/entidades'
+      fullPath: '/entidades'
+      preLoaderRoute: typeof AuthenticatedEntidadesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/lancamentos': {
       id: '/_authenticated/lancamentos'
       path: '/lancamentos'
@@ -123,11 +140,13 @@ declare module '@tanstack/react-router' {
 
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
+  AuthenticatedEntidadesRoute: typeof AuthenticatedEntidadesRoute
   AuthenticatedLancamentosRoute: typeof AuthenticatedLancamentosRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
+  AuthenticatedEntidadesRoute: AuthenticatedEntidadesRoute,
   AuthenticatedLancamentosRoute: AuthenticatedLancamentosRoute,
 }
 
