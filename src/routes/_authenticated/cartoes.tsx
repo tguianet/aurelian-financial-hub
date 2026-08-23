@@ -1,8 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { createFileRouteHead } from "@/lib/head";
 import { useEntityScope } from "@/components/finance/EntityContext";
-import { DemoNotice, PageHeader } from "@/components/finance/PageHeader";
-import { DemoTag, StatusPill, Td, Th } from "./lancamentos";
+import { PageHeader } from "@/components/finance/PageHeader";
+import { CreditCardActions } from "@/components/finance/CreditCardActions";
+import { StatusPill, Td, Th } from "./lancamentos";
 import { Progress } from "@/components/ui/progress";
 import { brl, buildScope, cardBill, fmtDate, pct, today } from "@/lib/finance";
 
@@ -24,23 +25,30 @@ function Cartoes() {
 
   return (
     <div>
-      <PageHeader title="Cartões de crédito" subtitle={entityName} />
-      <DemoNotice />
+      <PageHeader title="Cartões de crédito" subtitle={entityName} action={<CreditCardActions />} />
+
+      <div className="mb-4 rounded-lg border border-border bg-surface/60 px-4 py-3 text-xs text-muted-foreground">
+        Compras parceladas entram na projeção financeira pela data de vencimento de cada parcela. O cadastro usa o fechamento e o vencimento do cartão para montar a fatura automaticamente.
+      </div>
 
       <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
         {cards.map((c) => {
           const bill = cardBill(data, c.id, ref);
           const usage = c.credit_limit > 0 ? bill.open / Number(c.credit_limit) : 0;
+          const entity = data.entities.find((e) => e.id === c.entity_id);
+          const account = data.accounts.find((a) => a.id === c.account_id);
           return (
-            <div key={c.id} className="panel p-5">
+            <div key={c.id} className={`panel p-5 ${!c.active ? "opacity-55" : ""}`}>
               <div className="flex items-start justify-between">
                 <div>
                   <p className="text-sm font-medium">{c.name}</p>
                   <p className="text-[11px] text-muted-foreground">
-                    {c.brand} · fecha dia {c.closing_day} · vence dia {c.due_day}
+                    {[c.brand, entity?.name].filter(Boolean).join(" · ")}
                   </p>
                 </div>
-                {c.is_demo ? <DemoTag /> : null}
+                <span className="rounded-md border border-border px-2 py-1 text-[10px] text-muted-foreground">
+                  {c.active ? "Ativo" : "Inativo"}
+                </span>
               </div>
               <p className="num mt-4 text-2xl font-semibold text-destructive">{brl(bill.current)}</p>
               <p className="text-[11px] text-muted-foreground">Fatura do mês corrente</p>
@@ -51,15 +59,19 @@ function Cartoes() {
                 </div>
                 <Progress value={Math.min(usage * 100, 100)} className="h-1.5" />
                 <p className="text-[11px] text-muted-foreground">
-                  Limite {brl(Number(c.credit_limit))} · disponível{" "}
-                  {brl(Math.max(Number(c.credit_limit) - bill.open, 0))}
+                  Limite {brl(Number(c.credit_limit))} · disponível {brl(Math.max(Number(c.credit_limit) - bill.open, 0))}
+                </p>
+                <p className="text-[11px] text-muted-foreground">
+                  Fecha dia {c.closing_day} · vence dia {c.due_day}{account ? ` · paga por ${account.name}` : ""}
                 </p>
               </div>
             </div>
           );
         })}
         {cards.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Nenhum cartão nesta entidade.</p>
+          <div className="panel p-5 text-sm text-muted-foreground">
+            Nenhum cartão cadastrado nesta visão. Use <strong className="text-foreground">Novo cartão</strong> para começar.
+          </div>
         ) : null}
       </div>
 
@@ -81,42 +93,29 @@ function Cartoes() {
             {purchases.map((p) => {
               const items = data.installments.filter((i) => i.purchase_id === p.id);
               const open = items.filter((i) => i.status === "pending" || i.status === "overdue");
-              const next = open[0];
+              const next = [...open].sort((a, b) => a.due_date.localeCompare(b.due_date))[0];
               const card = data.cards.find((c) => c.id === p.credit_card_id);
               return (
                 <tr key={p.id} className="border-b border-border/60 last:border-0 hover:bg-surface">
-                  <Td>
-                    <div className="flex items-center gap-2">
-                      {p.description}
-                      {p.is_demo ? <DemoTag /> : null}
-                    </div>
-                  </Td>
+                  <Td>{p.description}</Td>
                   <Td>{card?.name ?? "—"}</Td>
                   <Td>{fmtDate(p.purchase_date)}</Td>
                   <Td className="num text-right">{brl(Number(p.total_amount))}</Td>
-                  <Td className="text-right">
-                    {items.length - open.length}/{p.installments} pagas
-                  </Td>
+                  <Td className="text-right">{items.length - open.length}/{p.installments} pagas</Td>
                   <Td>
                     {next ? (
-                      <span className="flex items-center gap-2">
-                        {fmtDate(next.due_date)} <StatusPill status={next.status} />
-                      </span>
+                      <span className="flex items-center gap-2">{fmtDate(next.due_date)} <StatusPill status={next.status} /></span>
                     ) : (
                       "Quitada"
                     )}
                   </Td>
-                  <Td className="num text-right text-destructive">
-                    {brl(open.reduce((s, i) => s + Number(i.amount), 0))}
-                  </Td>
+                  <Td className="num text-right text-destructive">{brl(open.reduce((s, i) => s + Number(i.amount), 0))}</Td>
                 </tr>
               );
             })}
             {purchases.length === 0 ? (
               <tr>
-                <td colSpan={7} className="p-8 text-center text-sm text-muted-foreground">
-                  Nenhuma compra parcelada.
-                </td>
+                <td colSpan={7} className="p-8 text-center text-sm text-muted-foreground">Nenhuma compra parcelada.</td>
               </tr>
             ) : null}
           </tbody>
