@@ -12,7 +12,7 @@ export const Route = createFileRoute("/_authenticated/entidades")({
       "Empresas e entidades — Aurelian Finance",
       "Saldo, receitas, despesas, resultado e participação de cada empresa no consolidado.",
     ),
-  component: Entidades;
+  component: Entidades,
 });
 
 function Entidades() {
