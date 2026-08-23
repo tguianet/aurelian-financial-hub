@@ -3,6 +3,7 @@ import { Wallet, TrendingUp, TrendingDown, ArrowDownToLine, ArrowUpFromLine, Lin
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useEntityScope } from "@/components/finance/EntityContext";
 import { KpiCard } from "@/components/finance/KpiCard";
+import { MobileQuickEntry } from "@/components/finance/MobileQuickEntry";
 import { PageHeader } from "@/components/finance/PageHeader";
 import { TransactionDialog } from "@/components/finance/TransactionDialog";
 import {
@@ -69,7 +70,11 @@ function Dashboard() {
 
       {isLoading ? <p className="mb-4 text-sm text-muted-foreground">Carregando dados…</p> : null}
 
-      <div className="panel relative overflow-hidden p-6 md:p-8">
+      <div className="mb-5 lg:hidden">
+        <MobileQuickEntry />
+      </div>
+
+      <div className="panel relative overflow-hidden p-5 md:p-8">
         <div className="pointer-events-none absolute -right-24 -top-24 size-72 rounded-full bg-primary/10 blur-3xl" />
         <div className="relative flex flex-wrap items-end justify-between gap-6">
           <div>
@@ -92,7 +97,7 @@ function Dashboard() {
         </div>
       </div>
 
-      <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mt-5 grid gap-4 grid-cols-2 xl:grid-cols-4">
         <KpiCard label="Saldo atual" value={brl(k.balance)} tone="gold" icon={<Wallet className="size-4" />} />
         <KpiCard label="Entradas do mês" value={brl(k.incomeMonth)} tone="positive" icon={<TrendingUp className="size-4" />} />
         <KpiCard label="Saídas do mês" value={brl(k.expenseMonth)} tone="negative" icon={<TrendingDown className="size-4" />} />
@@ -123,7 +128,7 @@ function Dashboard() {
 
       <div className="panel mt-5 p-5">
         <div className="mb-4 flex items-center justify-between"><div><h2 className="text-sm font-semibold">Empresas e pessoal</h2><p className="text-xs text-muted-foreground">Saldo e resultado mensal por entidade.</p></div><Link to="/entidades" className="text-xs text-primary hover:underline">Gerenciar</Link></div>
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 grid-cols-2 xl:grid-cols-4">
           {summaries.map((s) => (
             <div key={s.entity.id} className="rounded-lg border border-border bg-surface p-3">
               <div className="flex items-center gap-2"><span className="size-2.5 rounded-full" style={{ backgroundColor: s.entity.color }} /><span className="text-xs font-medium">{s.entity.name}</span></div>
@@ -132,6 +137,10 @@ function Dashboard() {
             </div>
           ))}
         </div>
+      </div>
+
+      <div className="mt-5 hidden lg:block">
+        <MobileQuickEntry />
       </div>
     </div>
   );
