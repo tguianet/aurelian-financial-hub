@@ -20,6 +20,7 @@ import { Route as AuthenticatedLancamentosRouteImport } from './routes/_authenti
 import { Route as AuthenticatedOrcamentoRouteImport } from './routes/_authenticated/orcamento'
 import { Route as AuthenticatedPendenciasRouteImport } from './routes/_authenticated/pendencias'
 import { Route as AuthenticatedProjecaoRouteImport } from './routes/_authenticated/projecao'
+import { Route as AuthenticatedRelatoriosRouteImport } from './routes/_authenticated/relatorios'
 import { Route as AuthenticatedReservasRouteImport } from './routes/_authenticated/reservas'
 
 const IndexRoute = IndexRouteImport.update({
@@ -77,6 +78,11 @@ const AuthenticatedProjecaoRoute = AuthenticatedProjecaoRouteImport.update({
   path: '/projecao',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedRelatoriosRoute = AuthenticatedRelatoriosRouteImport.update({
+  id: '/relatorios',
+  path: '/relatorios',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedReservasRoute = AuthenticatedReservasRouteImport.update({
   id: '/reservas',
   path: '/reservas',
@@ -94,6 +100,7 @@ export interface FileRoutesByFullPath {
   '/orcamento': typeof AuthenticatedOrcamentoRoute
   '/pendencias': typeof AuthenticatedPendenciasRoute
   '/projecao': typeof AuthenticatedProjecaoRoute
+  '/relatorios': typeof AuthenticatedRelatoriosRoute
   '/reservas': typeof AuthenticatedReservasRoute
 }
 export interface FileRoutesByTo {
@@ -107,6 +114,7 @@ export interface FileRoutesByTo {
   '/orcamento': typeof AuthenticatedOrcamentoRoute
   '/pendencias': typeof AuthenticatedPendenciasRoute
   '/projecao': typeof AuthenticatedProjecaoRoute
+  '/relatorios': typeof AuthenticatedRelatoriosRoute
   '/reservas': typeof AuthenticatedReservasRoute
 }
 export interface FileRoutesById {
@@ -122,6 +130,7 @@ export interface FileRoutesById {
   '/_authenticated/orcamento': typeof AuthenticatedOrcamentoRoute
   '/_authenticated/pendencias': typeof AuthenticatedPendenciasRoute
   '/_authenticated/projecao': typeof AuthenticatedProjecaoRoute
+  '/_authenticated/relatorios': typeof AuthenticatedRelatoriosRoute
   '/_authenticated/reservas': typeof AuthenticatedReservasRoute
 }
 export interface FileRouteTypes {
@@ -137,6 +146,7 @@ export interface FileRouteTypes {
     | '/orcamento'
     | '/pendencias'
     | '/projecao'
+    | '/relatorios'
     | '/reservas'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -150,6 +160,7 @@ export interface FileRouteTypes {
     | '/orcamento'
     | '/pendencias'
     | '/projecao'
+    | '/relatorios'
     | '/reservas'
   id:
     | '__root__'
@@ -164,6 +175,7 @@ export interface FileRouteTypes {
     | '/_authenticated/orcamento'
     | '/_authenticated/pendencias'
     | '/_authenticated/projecao'
+    | '/_authenticated/relatorios'
     | '/_authenticated/reservas'
   fileRoutesById: FileRoutesById
 }
@@ -252,6 +264,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedProjecaoRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/relatorios': {
+      id: '/_authenticated/relatorios'
+      path: '/relatorios'
+      fullPath: '/relatorios'
+      preLoaderRoute: typeof AuthenticatedRelatoriosRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/reservas': {
       id: '/_authenticated/reservas'
       path: '/reservas'
@@ -271,6 +290,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedOrcamentoRoute: typeof AuthenticatedOrcamentoRoute
   AuthenticatedPendenciasRoute: typeof AuthenticatedPendenciasRoute
   AuthenticatedProjecaoRoute: typeof AuthenticatedProjecaoRoute
+  AuthenticatedRelatoriosRoute: typeof AuthenticatedRelatoriosRoute
   AuthenticatedReservasRoute: typeof AuthenticatedReservasRoute
 }
 
@@ -283,6 +303,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedOrcamentoRoute: AuthenticatedOrcamentoRoute,
   AuthenticatedPendenciasRoute: AuthenticatedPendenciasRoute,
   AuthenticatedProjecaoRoute: AuthenticatedProjecaoRoute,
+  AuthenticatedRelatoriosRoute: AuthenticatedRelatoriosRoute,
   AuthenticatedReservasRoute: AuthenticatedReservasRoute,
 }
 
