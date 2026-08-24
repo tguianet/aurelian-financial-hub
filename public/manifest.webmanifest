@@ -1,0 +1,41 @@
+{
+  "name": "Aurelian Finance",
+  "short_name": "Aurelian",
+  "description": "Controle financeiro pessoal e multiempresa.",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#080806",
+  "theme_color": "#eab308",
+  "lang": "pt-BR",
+  "categories": ["finance", "business", "productivity"],
+  "icons": [
+    {
+      "src": "/icons/aurelian-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/aurelian-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Dashboard",
+      "short_name": "Dashboard",
+      "url": "/dashboard",
+      "icons": [{ "src": "/icons/aurelian-icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    },
+    {
+      "name": "Lançamentos",
+      "short_name": "Lançar",
+      "url": "/lancamentos",
+      "icons": [{ "src": "/icons/aurelian-icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    }
+  ]
+}
