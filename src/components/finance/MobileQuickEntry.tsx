@@ -18,6 +18,8 @@ type Draft = {
   description: string;
   originalText: string;
   parser: "local" | "openai";
+  installmentCount?: number;
+  totalAmount?: number;
 };
 
 type SpeechRecognitionCtor = new () => {
@@ -41,30 +43,48 @@ declare global {
 const normalize = (value: string) =>
   value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
-function parseAmount(text: string) {
-  const matches = text.match(/\d[\d.,]*/g) ?? [];
+function parseBrazilianNumber(rawValue: string) {
+  const raw = rawValue.replace(/[^\d.,]/g, "");
+  if (!raw) return null;
 
-  for (const rawMatch of matches) {
-    const raw = rawMatch.replace(/[^\d.,]/g, "");
-    if (!raw) continue;
-
-    let clean: string;
-
-    if (raw.includes(",")) {
-      // pt-BR: 1.850,75 -> 1850.75
-      clean = raw.replace(/\./g, "").replace(",", ".");
-    } else if (/^\d{1,3}(\.\d{3})+$/.test(raw)) {
-      // pt-BR thousands: 1.850 -> 1850 / 12.500 -> 12500
-      clean = raw.replace(/\./g, "");
-    } else {
-      // Plain integer or decimal typed with dot: 1850 / 18.50
-      clean = raw;
-    }
-
-    const amount = Number(clean);
-    if (Number.isFinite(amount) && amount > 0) return amount;
+  let clean: string;
+  if (raw.includes(",")) {
+    clean = raw.replace(/\./g, "").replace(",", ".");
+  } else if (/^\d{1,3}(\.\d{3})+$/.test(raw)) {
+    clean = raw.replace(/\./g, "");
+  } else {
+    clean = raw;
   }
 
+  const value = Number(clean);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function parseInstallment(text: string) {
+  const match = text.match(/\b(\d{1,2})\s*x\s*(?:de\s*)?(?:r\$\s*)?(\d[\d.,]*)/i);
+  if (!match) return null;
+
+  const count = Number(match[1]);
+  const installmentAmount = parseBrazilianNumber(match[2]);
+  if (!Number.isInteger(count) || count < 2 || count > 60 || !installmentAmount) return null;
+
+  return {
+    count,
+    installmentAmount,
+    totalAmount: Math.round(count * installmentAmount * 100) / 100,
+    matchedText: match[0],
+  };
+}
+
+function parseAmount(text: string) {
+  const installment = parseInstallment(text);
+  if (installment) return installment.installmentAmount;
+
+  const matches = text.match(/\d[\d.,]*/g) ?? [];
+  for (const raw of matches) {
+    const amount = parseBrazilianNumber(raw);
+    if (amount) return amount;
+  }
   return null;
 }
 
@@ -76,9 +96,17 @@ function inferKind(text: string): Draft["kind"] {
 
 function removeEntityMention(text: string, entityName?: string) {
   if (!entityName) return normalize(text);
-  const normalizedText = normalize(text);
-  const normalizedEntity = normalize(entityName);
-  return normalizedText.replaceAll(normalizedEntity, " ").replace(/\s+/g, " ").trim();
+  return normalize(text).replaceAll(normalize(entityName), " ").replace(/\s+/g, " ").trim();
+}
+
+function monthlyIsoDate(baseIso: string, monthOffset: number) {
+  const [year, month, day] = baseIso.split("-").map(Number);
+  const monthIndex = month - 1 + monthOffset;
+  const targetYear = year + Math.floor(monthIndex / 12);
+  const targetMonthIndex = ((monthIndex % 12) + 12) % 12;
+  const lastDay = new Date(Date.UTC(targetYear, targetMonthIndex + 1, 0)).getUTCDate();
+  const targetDay = Math.min(day, lastDay);
+  return new Date(Date.UTC(targetYear, targetMonthIndex, targetDay)).toISOString().slice(0, 10);
 }
 
 export function MobileQuickEntry() {
@@ -98,8 +126,10 @@ export function MobileQuickEntry() {
   );
 
   const localInterpret = (originalText: string) => {
-    const amount = parseAmount(originalText);
+    const installment = parseInstallment(originalText);
+    const amount = installment?.installmentAmount ?? parseAmount(originalText);
     if (!amount) return null;
+
     const n = normalize(originalText);
     const kind = inferKind(originalText);
     const explicitEntity = data.entities.find((e) => n.includes(normalize(e.name)));
@@ -118,6 +148,7 @@ export function MobileQuickEntry() {
     const category = categories.find((c) => categoryText.includes(normalize(c.name))) ??
       categories.find((c) => {
         const cn = normalize(c.name);
+        if (cn.includes("veiculo") && /(moto|motocicleta|carro|veiculo|van|saveiro|caminhao)/.test(categoryText)) return true;
         if (cn.includes("manutencao") && /(manutencao|conserto|reparo|oficina)/.test(categoryText)) return true;
         if (cn.includes("combustivel") && /(gasolina|etanol|alcool|posto|combustivel)/.test(categoryText)) return true;
         if (cn.includes("alimentacao") && /(comida|almoco|janta|mercado)/.test(categoryText)) return true;
@@ -127,10 +158,13 @@ export function MobileQuickEntry() {
         return false;
       }) ?? null;
 
-    const stripped = originalText
-      .replace(/\d[\d.,]*/, "")
-      .replace(/\b(gastei|paguei|comprei|recebi|entrou|vendi|ganhei|faturei|reais|real|r\$)\b/gi, "")
-      .replace(/\s+/g, " ").trim();
+    let stripped = originalText;
+    if (installment) stripped = stripped.replace(installment.matchedText, "");
+    stripped = stripped
+      .replace(/\b(parcelei|financiei|comprei|gastei|paguei|recebi|entrou|vendi|ganhei|faturei|reais|real|r\$|em|de)\b/gi, " ")
+      .replace(/\d[\d.,]*/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
 
     const result: Draft = {
       kind,
@@ -141,9 +175,11 @@ export function MobileQuickEntry() {
       description: stripped || (kind === "income" ? "Entrada rápida" : "Saída rápida"),
       originalText,
       parser: "local",
+      installmentCount: installment?.count,
+      totalAmount: installment?.totalAmount,
     };
 
-    const confident = Boolean(category) && (Boolean(explicitEntity) || selectedEntityId !== "all");
+    const confident = Boolean(category) && (Boolean(installment) || Boolean(explicitEntity) || selectedEntityId !== "all");
     return { result, confident };
   };
 
@@ -258,33 +294,77 @@ export function MobileQuickEntry() {
     if (!draft || !user) return;
     setSaving(true);
     const today = new Date().toISOString().slice(0, 10);
-    const { error } = await supabase.from("transactions").insert({
-      user_id: user.id,
-      entity_id: draft.entityId,
-      kind: draft.kind,
-      description: draft.description,
-      amount: draft.amount,
-      category_id: draft.categoryId,
-      account_id: draft.accountId,
-      payment_method: "other",
-      competence_date: today,
-      due_date: today,
-      paid_at: today,
-      status: draft.kind === "income" ? "received" : "paid",
-      recurrence: "none",
-      source: draft.parser === "openai" ? "mobile_openai" : "mobile_quick_entry",
-      notes: `Comando original: ${draft.originalText}`,
-    });
-    setSaving(false);
-    if (error) return toast.error(error.message);
+    const source = draft.parser === "openai" ? "mobile_openai" : "mobile_quick_entry";
 
-    await supabase.from("audit_log").insert({
-      user_id: user.id,
-      table_name: "transactions",
-      action: "insert",
-      details: { source: draft.parser, text: draft.originalText, amount: draft.amount },
-    });
-    toast.success("Lançamento confirmado.");
+    if (draft.installmentCount && draft.installmentCount > 1) {
+      const rows = Array.from({ length: draft.installmentCount }, (_, index) => ({
+        user_id: user.id,
+        entity_id: draft.entityId,
+        kind: draft.kind,
+        description: draft.description,
+        amount: draft.amount,
+        category_id: draft.categoryId,
+        account_id: draft.accountId,
+        payment_method: "other",
+        competence_date: monthlyIsoDate(today, index),
+        due_date: monthlyIsoDate(today, index),
+        paid_at: null,
+        status: "pending",
+        recurrence: "none",
+        installment_no: index + 1,
+        installment_total: draft.installmentCount,
+        source,
+        notes: `Comando original: ${draft.originalText}`,
+      }));
+
+      const { error } = await supabase.from("transactions").insert(rows);
+      setSaving(false);
+      if (error) return toast.error(error.message);
+
+      await supabase.from("audit_log").insert({
+        user_id: user.id,
+        table_name: "transactions",
+        action: "insert",
+        details: {
+          source: draft.parser,
+          text: draft.originalText,
+          installment_count: draft.installmentCount,
+          installment_amount: draft.amount,
+          total_amount: draft.totalAmount,
+        },
+      });
+
+      toast.success(`${draft.installmentCount} parcelas criadas no contas a pagar.`);
+    } else {
+      const { error } = await supabase.from("transactions").insert({
+        user_id: user.id,
+        entity_id: draft.entityId,
+        kind: draft.kind,
+        description: draft.description,
+        amount: draft.amount,
+        category_id: draft.categoryId,
+        account_id: draft.accountId,
+        payment_method: "other",
+        competence_date: today,
+        due_date: today,
+        paid_at: today,
+        status: draft.kind === "income" ? "received" : "paid",
+        recurrence: "none",
+        source,
+        notes: `Comando original: ${draft.originalText}`,
+      });
+      setSaving(false);
+      if (error) return toast.error(error.message);
+
+      await supabase.from("audit_log").insert({
+        user_id: user.id,
+        table_name: "transactions",
+        action: "insert",
+        details: { source: draft.parser, text: draft.originalText, amount: draft.amount },
+      });
+      toast.success("Lançamento confirmado.");
+    }
+
     setDraft(null);
     setText("");
     refresh();
@@ -321,11 +401,18 @@ export function MobileQuickEntry() {
           </div>
           <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
             <div><span className="block text-[11px] text-muted-foreground">Tipo</span><strong>{draft.kind === "income" ? "Entrada" : "Saída"}</strong></div>
-            <div><span className="block text-[11px] text-muted-foreground">Valor</span><strong className={draft.kind === "income" ? "text-success" : "text-destructive"}>{brl(draft.amount)}</strong></div>
+            <div><span className="block text-[11px] text-muted-foreground">{draft.installmentCount ? "Valor da parcela" : "Valor"}</span><strong className={draft.kind === "income" ? "text-success" : "text-destructive"}>{brl(draft.amount)}</strong></div>
             <div><span className="block text-[11px] text-muted-foreground">Entidade</span><strong>{entity?.name ?? "—"}</strong></div>
             <div><span className="block text-[11px] text-muted-foreground">Categoria</span><strong>{category?.name ?? "Sem categoria"}</strong></div>
+            {draft.installmentCount ? (
+              <>
+                <div><span className="block text-[11px] text-muted-foreground">Parcelas</span><strong>{draft.installmentCount}x</strong></div>
+                <div><span className="block text-[11px] text-muted-foreground">Total contratado</span><strong>{brl(draft.totalAmount ?? draft.amount * draft.installmentCount)}</strong></div>
+              </>
+            ) : null}
             <div className="col-span-2"><span className="block text-[11px] text-muted-foreground">Conta</span><strong>{account?.name ?? "—"}</strong></div>
           </div>
+          {draft.installmentCount ? <p className="mt-3 text-[11px] text-muted-foreground">Ao confirmar, serão criadas {draft.installmentCount} parcelas mensais pendentes. A primeira vence hoje.</p> : null}
           <div className="mt-4 grid grid-cols-2 gap-2">
             <Button variant="ghost" className="gap-2" onClick={() => setDraft(null)}><RotateCcw className="size-4" /> Corrigir</Button>
             <Button className="gap-2" disabled={saving} onClick={confirm}><Check className="size-4" /> {saving ? "Salvando..." : "Confirmar"}</Button>
