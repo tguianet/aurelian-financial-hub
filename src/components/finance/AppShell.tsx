@@ -13,6 +13,7 @@ import {
   FileBarChart,
   MessageCircle,
   FolderOpen,
+  Users,
   Menu,
   LogOut,
   Sparkles,
@@ -43,6 +44,7 @@ const NAV = [
   { to: "/reservas", label: "Reservas", icon: PiggyBank },
   { to: "/projecao", label: "Projeção", icon: LineChart },
   { to: "/relatorios", label: "Relatórios", icon: FileBarChart },
+  { to: "/familia", label: "Família", icon: Users },
   { to: "/whatsapp", label: "WhatsApp", icon: MessageCircle },
 ] as const;
 
