@@ -256,7 +256,8 @@ async function handleDocumentInterpret(request: Request, env: unknown): Promise<
       if (isImage) {
         content.push({ type: "input_image", image_url: document.signed_url, detail: "high" });
       } else {
-        content.push({ type: "input_file", file_url: document.signed_url, filename: document.name });
+        // 'filename' is mutually exclusive with file_url/file_id on the Responses API.
+        content.push({ type: "input_file", file_url: document.signed_url });
       }
     }
 
