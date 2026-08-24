@@ -24,6 +24,7 @@ export type Database = {
           is_demo: boolean
           name: string
           opening_balance: number
+          space_id: string | null
           type: string
           user_id: string | null
         }
@@ -36,6 +37,7 @@ export type Database = {
           is_demo?: boolean
           name: string
           opening_balance?: number
+          space_id?: string | null
           type?: string
           user_id?: string | null
         }
@@ -48,6 +50,7 @@ export type Database = {
           is_demo?: boolean
           name?: string
           opening_balance?: number
+          space_id?: string | null
           type?: string
           user_id?: string | null
         }
@@ -57,6 +60,13 @@ export type Database = {
             columns: ["entity_id"]
             isOneToOne: false
             referencedRelation: "financial_entities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "accounts_space_id_fkey"
+            columns: ["space_id"]
+            isOneToOne: false
+            referencedRelation: "finance_spaces"
             referencedColumns: ["id"]
           },
         ]
@@ -69,6 +79,7 @@ export type Database = {
           id: string
           is_demo: boolean
           severity: string
+          space_id: string | null
           title: string
           user_id: string | null
         }
@@ -79,6 +90,7 @@ export type Database = {
           id?: string
           is_demo?: boolean
           severity?: string
+          space_id?: string | null
           title: string
           user_id?: string | null
         }
@@ -89,6 +101,7 @@ export type Database = {
           id?: string
           is_demo?: boolean
           severity?: string
+          space_id?: string | null
           title?: string
           user_id?: string | null
         }
@@ -100,6 +113,13 @@ export type Database = {
             referencedRelation: "financial_entities"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "ai_insights_space_id_fkey"
+            columns: ["space_id"]
+            isOneToOne: false
+            referencedRelation: "finance_spaces"
+            referencedColumns: ["id"]
+          },
         ]
       }
       audit_log: {
@@ -109,6 +129,7 @@ export type Database = {
           details: Json | null
           id: string
           record_id: string | null
+          space_id: string | null
           table_name: string
           user_id: string | null
         }
@@ -118,6 +139,7 @@ export type Database = {
           details?: Json | null
           id?: string
           record_id?: string | null
+          space_id?: string | null
           table_name: string
           user_id?: string | null
         }
@@ -127,10 +149,19 @@ export type Database = {
           details?: Json | null
           id?: string
           record_id?: string | null
+          space_id?: string | null
           table_name?: string
           user_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "audit_log_space_id_fkey"
+            columns: ["space_id"]
+            isOneToOne: false
+            referencedRelation: "finance_spaces"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       budgets: {
         Row: {
@@ -141,6 +172,7 @@ export type Database = {
           is_demo: boolean
           month: string
           planned_amount: number
+          space_id: string | null
           user_id: string | null
         }
         Insert: {
@@ -151,6 +183,7 @@ export type Database = {
           is_demo?: boolean
           month: string
           planned_amount?: number
+          space_id?: string | null
           user_id?: string | null
         }
         Update: {
@@ -161,6 +194,7 @@ export type Database = {
           is_demo?: boolean
           month?: string
           planned_amount?: number
+          space_id?: string | null
           user_id?: string | null
         }
         Relationships: [
@@ -178,6 +212,13 @@ export type Database = {
             referencedRelation: "financial_entities"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "budgets_space_id_fkey"
+            columns: ["space_id"]
+            isOneToOne: false
+            referencedRelation: "finance_spaces"
+            referencedColumns: ["id"]
+          },
         ]
       }
       categories: {
@@ -188,6 +229,7 @@ export type Database = {
           is_demo: boolean
           kind: string
           name: string
+          space_id: string | null
           user_id: string | null
         }
         Insert: {
@@ -197,6 +239,7 @@ export type Database = {
           is_demo?: boolean
           kind?: string
           name: string
+          space_id?: string | null
           user_id?: string | null
         }
         Update: {
@@ -206,9 +249,18 @@ export type Database = {
           is_demo?: boolean
           kind?: string
           name?: string
+          space_id?: string | null
           user_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "categories_space_id_fkey"
+            columns: ["space_id"]
+            isOneToOne: false
+            referencedRelation: "finance_spaces"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       credit_card_installments: {
         Row: {
@@ -220,6 +272,7 @@ export type Database = {
           installment_no: number
           is_demo: boolean
           purchase_id: string
+          space_id: string | null
           status: string
           user_id: string | null
         }
@@ -232,6 +285,7 @@ export type Database = {
           installment_no: number
           is_demo?: boolean
           purchase_id: string
+          space_id?: string | null
           status?: string
           user_id?: string | null
         }
@@ -244,6 +298,7 @@ export type Database = {
           installment_no?: number
           is_demo?: boolean
           purchase_id?: string
+          space_id?: string | null
           status?: string
           user_id?: string | null
         }
@@ -262,6 +317,13 @@ export type Database = {
             referencedRelation: "credit_card_purchases"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "credit_card_installments_space_id_fkey"
+            columns: ["space_id"]
+            isOneToOne: false
+            referencedRelation: "finance_spaces"
+            referencedColumns: ["id"]
+          },
         ]
       }
       credit_card_purchases: {
@@ -275,6 +337,7 @@ export type Database = {
           installments: number
           is_demo: boolean
           purchase_date: string
+          space_id: string | null
           total_amount: number
           user_id: string | null
         }
@@ -288,6 +351,7 @@ export type Database = {
           installments?: number
           is_demo?: boolean
           purchase_date?: string
+          space_id?: string | null
           total_amount: number
           user_id?: string | null
         }
@@ -301,6 +365,7 @@ export type Database = {
           installments?: number
           is_demo?: boolean
           purchase_date?: string
+          space_id?: string | null
           total_amount?: number
           user_id?: string | null
         }
@@ -326,6 +391,13 @@ export type Database = {
             referencedRelation: "financial_entities"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "credit_card_purchases_space_id_fkey"
+            columns: ["space_id"]
+            isOneToOne: false
+            referencedRelation: "finance_spaces"
+            referencedColumns: ["id"]
+          },
         ]
       }
       credit_cards: {
@@ -341,6 +413,7 @@ export type Database = {
           id: string
           is_demo: boolean
           name: string
+          space_id: string | null
           user_id: string | null
         }
         Insert: {
@@ -355,6 +428,7 @@ export type Database = {
           id?: string
           is_demo?: boolean
           name: string
+          space_id?: string | null
           user_id?: string | null
         }
         Update: {
@@ -369,6 +443,7 @@ export type Database = {
           id?: string
           is_demo?: boolean
           name?: string
+          space_id?: string | null
           user_id?: string | null
         }
         Relationships: [
@@ -386,7 +461,123 @@ export type Database = {
             referencedRelation: "financial_entities"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "credit_cards_space_id_fkey"
+            columns: ["space_id"]
+            isOneToOne: false
+            referencedRelation: "finance_spaces"
+            referencedColumns: ["id"]
+          },
         ]
+      }
+      finance_invites: {
+        Row: {
+          created_at: string
+          created_by: string
+          expires_at: string
+          id: string
+          recipient_name: string
+          revoked_at: string | null
+          role: string
+          space_id: string
+          token_hash: string
+          used_at: string | null
+          used_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          expires_at: string
+          id?: string
+          recipient_name: string
+          revoked_at?: string | null
+          role: string
+          space_id: string
+          token_hash: string
+          used_at?: string | null
+          used_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          expires_at?: string
+          id?: string
+          recipient_name?: string
+          revoked_at?: string | null
+          role?: string
+          space_id?: string
+          token_hash?: string
+          used_at?: string | null
+          used_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "finance_invites_space_id_fkey"
+            columns: ["space_id"]
+            isOneToOne: false
+            referencedRelation: "finance_spaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      finance_space_members: {
+        Row: {
+          added_by: string | null
+          joined_at: string
+          revoked_at: string | null
+          role: string
+          space_id: string
+          user_id: string
+        }
+        Insert: {
+          added_by?: string | null
+          joined_at?: string
+          revoked_at?: string | null
+          role: string
+          space_id: string
+          user_id: string
+        }
+        Update: {
+          added_by?: string | null
+          joined_at?: string
+          revoked_at?: string | null
+          role?: string
+          space_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "finance_space_members_space_id_fkey"
+            columns: ["space_id"]
+            isOneToOne: false
+            referencedRelation: "finance_spaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      finance_spaces: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          owner_user_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name?: string
+          owner_user_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          owner_user_id?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       financial_documents: {
         Row: {
@@ -398,6 +589,7 @@ export type Database = {
           notes: string | null
           size_bytes: number | null
           source: string
+          space_id: string | null
           status: string
           storage_path: string
           transaction_id: string | null
@@ -413,6 +605,7 @@ export type Database = {
           notes?: string | null
           size_bytes?: number | null
           source?: string
+          space_id?: string | null
           status?: string
           storage_path: string
           transaction_id?: string | null
@@ -428,6 +621,7 @@ export type Database = {
           notes?: string | null
           size_bytes?: number | null
           source?: string
+          space_id?: string | null
           status?: string
           storage_path?: string
           transaction_id?: string | null
@@ -440,6 +634,13 @@ export type Database = {
             columns: ["entity_id"]
             isOneToOne: false
             referencedRelation: "financial_entities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_documents_space_id_fkey"
+            columns: ["space_id"]
+            isOneToOne: false
+            referencedRelation: "finance_spaces"
             referencedColumns: ["id"]
           },
           {
@@ -461,6 +662,7 @@ export type Database = {
           kind: string
           name: string
           slug: string
+          space_id: string | null
           user_id: string | null
         }
         Insert: {
@@ -472,6 +674,7 @@ export type Database = {
           kind?: string
           name: string
           slug: string
+          space_id?: string | null
           user_id?: string | null
         }
         Update: {
@@ -483,9 +686,18 @@ export type Database = {
           kind?: string
           name?: string
           slug?: string
+          space_id?: string | null
           user_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "financial_entities_space_id_fkey"
+            columns: ["space_id"]
+            isOneToOne: false
+            referencedRelation: "finance_spaces"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       financial_snapshots: {
         Row: {
@@ -497,6 +709,7 @@ export type Database = {
           is_demo: boolean
           payload: Json | null
           snapshot_date: string
+          space_id: string | null
           user_id: string | null
         }
         Insert: {
@@ -508,6 +721,7 @@ export type Database = {
           is_demo?: boolean
           payload?: Json | null
           snapshot_date?: string
+          space_id?: string | null
           user_id?: string | null
         }
         Update: {
@@ -519,6 +733,7 @@ export type Database = {
           is_demo?: boolean
           payload?: Json | null
           snapshot_date?: string
+          space_id?: string | null
           user_id?: string | null
         }
         Relationships: [
@@ -527,6 +742,13 @@ export type Database = {
             columns: ["entity_id"]
             isOneToOne: false
             referencedRelation: "financial_entities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_snapshots_space_id_fkey"
+            columns: ["space_id"]
+            isOneToOne: false
+            referencedRelation: "finance_spaces"
             referencedColumns: ["id"]
           },
         ]
@@ -567,6 +789,7 @@ export type Database = {
           is_demo: boolean
           kind: string
           next_run: string | null
+          space_id: string | null
           user_id: string | null
         }
         Insert: {
@@ -583,6 +806,7 @@ export type Database = {
           is_demo?: boolean
           kind: string
           next_run?: string | null
+          space_id?: string | null
           user_id?: string | null
         }
         Update: {
@@ -599,6 +823,7 @@ export type Database = {
           is_demo?: boolean
           kind?: string
           next_run?: string | null
+          space_id?: string | null
           user_id?: string | null
         }
         Relationships: [
@@ -623,6 +848,13 @@ export type Database = {
             referencedRelation: "financial_entities"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "recurring_transactions_space_id_fkey"
+            columns: ["space_id"]
+            isOneToOne: false
+            referencedRelation: "finance_spaces"
+            referencedColumns: ["id"]
+          },
         ]
       }
       reserves: {
@@ -635,6 +867,7 @@ export type Database = {
           is_demo: boolean
           name: string
           notes: string | null
+          space_id: string | null
           target_amount: number
           user_id: string | null
         }
@@ -647,6 +880,7 @@ export type Database = {
           is_demo?: boolean
           name: string
           notes?: string | null
+          space_id?: string | null
           target_amount?: number
           user_id?: string | null
         }
@@ -659,6 +893,7 @@ export type Database = {
           is_demo?: boolean
           name?: string
           notes?: string | null
+          space_id?: string | null
           target_amount?: number
           user_id?: string | null
         }
@@ -675,6 +910,13 @@ export type Database = {
             columns: ["entity_id"]
             isOneToOne: false
             referencedRelation: "financial_entities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reserves_space_id_fkey"
+            columns: ["space_id"]
+            isOneToOne: false
+            referencedRelation: "finance_spaces"
             referencedColumns: ["id"]
           },
         ]
@@ -701,6 +943,7 @@ export type Database = {
           payment_method: string
           recurrence: string
           source: string
+          space_id: string | null
           status: string
           to_account_id: string | null
           to_entity_id: string | null
@@ -728,6 +971,7 @@ export type Database = {
           payment_method?: string
           recurrence?: string
           source?: string
+          space_id?: string | null
           status?: string
           to_account_id?: string | null
           to_entity_id?: string | null
@@ -755,6 +999,7 @@ export type Database = {
           payment_method?: string
           recurrence?: string
           source?: string
+          space_id?: string | null
           status?: string
           to_account_id?: string | null
           to_entity_id?: string | null
@@ -791,6 +1036,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "transactions_space_id_fkey"
+            columns: ["space_id"]
+            isOneToOne: false
+            referencedRelation: "finance_spaces"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "transactions_to_account_id_fkey"
             columns: ["to_account_id"]
             isOneToOne: false
@@ -814,6 +1066,7 @@ export type Database = {
           parsed: Json | null
           phone: string | null
           raw_message: string
+          space_id: string | null
           status: string
           transaction_id: string | null
           user_id: string | null
@@ -825,6 +1078,7 @@ export type Database = {
           parsed?: Json | null
           phone?: string | null
           raw_message: string
+          space_id?: string | null
           status?: string
           transaction_id?: string | null
           user_id?: string | null
@@ -836,11 +1090,19 @@ export type Database = {
           parsed?: Json | null
           phone?: string | null
           raw_message?: string
+          space_id?: string | null
           status?: string
           transaction_id?: string | null
           user_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "whatsapp_commands_space_id_fkey"
+            columns: ["space_id"]
+            isOneToOne: false
+            referencedRelation: "finance_spaces"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "whatsapp_commands_transaction_id_fkey"
             columns: ["transaction_id"]
@@ -858,6 +1120,7 @@ export type Database = {
           id: string
           last_webhook_at: string | null
           phone_number_id: string | null
+          space_id: string | null
           status: string
           updated_at: string
           user_id: string
@@ -869,6 +1132,7 @@ export type Database = {
           id?: string
           last_webhook_at?: string | null
           phone_number_id?: string | null
+          space_id?: string | null
           status?: string
           updated_at?: string
           user_id: string
@@ -880,21 +1144,47 @@ export type Database = {
           id?: string
           last_webhook_at?: string | null
           phone_number_id?: string | null
+          space_id?: string | null
           status?: string
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_settings_space_id_fkey"
+            columns: ["space_id"]
+            isOneToOne: false
+            referencedRelation: "finance_spaces"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
+      can_manage_finance_document_path: {
+        Args: { p_name: string }
+        Returns: boolean
+      }
+      can_manage_finance_user: {
+        Args: { p_other_user_id: string }
+        Returns: boolean
+      }
+      can_read_finance_document_path: {
+        Args: { p_name: string }
+        Returns: boolean
+      }
+      can_write_finance_space: {
+        Args: { p_space_id: string; p_user_id?: string }
+        Returns: boolean
+      }
       card_due_date: {
         Args: { _due_day: number; _month: string }
         Returns: string
       }
+      consume_finance_invite: { Args: { p_token: string }; Returns: string }
       create_credit_card_purchase: {
         Args: {
           _category_id: string
@@ -906,9 +1196,71 @@ export type Database = {
         }
         Returns: string
       }
+      create_finance_invite: {
+        Args: {
+          p_expires_hours?: number
+          p_recipient_name: string
+          p_role?: string
+        }
+        Returns: {
+          expires_at: string
+          invite_id: string
+          token: string
+        }[]
+      }
+      current_finance_space_id: { Args: never; Returns: string }
       ensure_finance_workspace: {
         Args: { _user_id: string }
         Returns: undefined
+      }
+      inspect_finance_invite: {
+        Args: { p_token: string }
+        Returns: {
+          expires_at: string
+          reason: string
+          recipient_name: string
+          role: string
+          space_name: string
+          valid: boolean
+        }[]
+      }
+      is_finance_space_member: {
+        Args: { p_space_id: string; p_user_id?: string }
+        Returns: boolean
+      }
+      is_finance_space_owner: {
+        Args: { p_space_id: string; p_user_id?: string }
+        Returns: boolean
+      }
+      list_finance_family: {
+        Args: never
+        Returns: {
+          email: string
+          full_name: string
+          is_self: boolean
+          joined_at: string
+          revoked_at: string
+          role: string
+          user_id: string
+        }[]
+      }
+      list_finance_invites: {
+        Args: never
+        Returns: {
+          created_at: string
+          expires_at: string
+          id: string
+          recipient_name: string
+          revoked_at: string
+          role: string
+          used_at: string
+        }[]
+      }
+      revoke_finance_invite: { Args: { p_invite_id: string }; Returns: boolean }
+      revoke_finance_member: { Args: { p_user_id: string }; Returns: boolean }
+      shares_finance_space_with: {
+        Args: { p_other_user_id: string }
+        Returns: boolean
       }
     }
     Enums: {
