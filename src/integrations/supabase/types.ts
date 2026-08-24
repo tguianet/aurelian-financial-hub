@@ -388,6 +388,69 @@ export type Database = {
           },
         ]
       }
+      financial_documents: {
+        Row: {
+          created_at: string
+          entity_id: string | null
+          file_name: string
+          id: string
+          mime_type: string | null
+          notes: string | null
+          size_bytes: number | null
+          source: string
+          status: string
+          storage_path: string
+          transaction_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          entity_id?: string | null
+          file_name: string
+          id?: string
+          mime_type?: string | null
+          notes?: string | null
+          size_bytes?: number | null
+          source?: string
+          status?: string
+          storage_path: string
+          transaction_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          entity_id?: string | null
+          file_name?: string
+          id?: string
+          mime_type?: string | null
+          notes?: string | null
+          size_bytes?: number | null
+          source?: string
+          status?: string
+          storage_path?: string
+          transaction_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "financial_documents_entity_id_fkey"
+            columns: ["entity_id"]
+            isOneToOne: false
+            referencedRelation: "financial_entities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_documents_transaction_id_fkey"
+            columns: ["transaction_id"]
+            isOneToOne: false
+            referencedRelation: "transactions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       financial_entities: {
         Row: {
           active: boolean
@@ -787,12 +850,66 @@ export type Database = {
           },
         ]
       }
+      whatsapp_settings: {
+        Row: {
+          business_account_id: string | null
+          created_at: string
+          display_phone_number: string | null
+          id: string
+          last_webhook_at: string | null
+          phone_number_id: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          business_account_id?: string | null
+          created_at?: string
+          display_phone_number?: string | null
+          id?: string
+          last_webhook_at?: string | null
+          phone_number_id?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          business_account_id?: string | null
+          created_at?: string
+          display_phone_number?: string | null
+          id?: string
+          last_webhook_at?: string | null
+          phone_number_id?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      card_due_date: {
+        Args: { _due_day: number; _month: string }
+        Returns: string
+      }
+      create_credit_card_purchase: {
+        Args: {
+          _category_id: string
+          _credit_card_id: string
+          _description: string
+          _installments?: number
+          _purchase_date: string
+          _total_amount: number
+        }
+        Returns: string
+      }
+      ensure_finance_workspace: {
+        Args: { _user_id: string }
+        Returns: undefined
+      }
     }
     Enums: {
       [_ in never]: never
