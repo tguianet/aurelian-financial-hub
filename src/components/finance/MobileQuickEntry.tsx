@@ -255,8 +255,8 @@ export function MobileQuickEntry({ documents = [] }: Props) {
 
   const interpret = async (value = text) => {
     const originalText = value.trim();
-    if (!originalText && !documents.length) return toast.error("Digite, fale ou anexe um documento.");
-    if (!documents.length && !parseAmount(originalText)) return toast.error("Não encontrei o valor. Ex.: gastei 180 combustível.");
+    if (!originalText && !documents.length) { toast.error("Digite, fale ou anexe um documento."); return; }
+    if (!documents.length && !parseAmount(originalText)) { toast.error("Não encontrei o valor. Ex.: gastei 180 combustível."); return; }
 
     setInterpreting(true);
     if (documents.length) {
@@ -303,7 +303,7 @@ export function MobileQuickEntry({ documents = [] }: Props) {
   };
 
   const startVoice = () => {
-    if (!speechSupported) return toast.error("Reconhecimento de voz não disponível neste navegador.");
+    if (!speechSupported) { toast.error("Reconhecimento de voz não disponível neste navegador."); return; }
     const Ctor = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!Ctor) return;
     const recognition = new Ctor();
@@ -341,7 +341,7 @@ export function MobileQuickEntry({ documents = [] }: Props) {
       }));
       const { error } = await supabase.from("transactions").insert(rows);
       setSaving(false);
-      if (error) return toast.error(error.message);
+      if (error) { toast.error(error.message); return; }
       toast.success(`${draft.installmentCount} parcelas criadas no contas a pagar.`);
     } else {
       const isPending = Boolean(draft.pending);
@@ -354,7 +354,7 @@ export function MobileQuickEntry({ documents = [] }: Props) {
         notes: `Comando original: ${draft.originalText || "Documento anexado"}${draft.vendor ? ` | Documento: ${draft.vendor}` : ""}`,
       });
       setSaving(false);
-      if (error) return toast.error(error.message);
+      if (error) { toast.error(error.message); return; }
       toast.success(isPending ? (draft.kind === "income" ? "Conta a receber criada." : "Conta a pagar criada.") : "Lançamento confirmado.");
     }
 

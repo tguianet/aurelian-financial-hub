@@ -46,7 +46,7 @@ function Documentos() {
       sortBy: { column: "created_at", order: "desc" },
     });
     setLoading(false);
-    if (error) return toast.error(error.message);
+    if (error) { toast.error(error.message); return; }
     setFiles((data ?? []) as DocumentFile[]);
   }, [user]);
 
@@ -58,7 +58,7 @@ function Documentos() {
     if (!user) return;
     const path = `${user.id}/inbox/${name}`;
     const { data, error } = await supabase.storage.from("financial-documents").createSignedUrl(path, 60);
-    if (error) return toast.error(error.message);
+    if (error) { toast.error(error.message); return; }
     window.open(data.signedUrl, "_blank", "noopener,noreferrer");
   };
 
@@ -66,7 +66,7 @@ function Documentos() {
     if (!user) return;
     const path = `${user.id}/inbox/${name}`;
     const { error } = await supabase.storage.from("financial-documents").remove([path]);
-    if (error) return toast.error(error.message);
+    if (error) { toast.error(error.message); return; }
     toast.success("Documento excluído.");
     void load();
   };

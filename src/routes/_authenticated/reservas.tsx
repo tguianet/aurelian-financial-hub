@@ -51,13 +51,14 @@ function Reservas() {
   const entityAccounts = data.accounts.filter((a) => a.entity_id === ownerEntityId && a.active);
 
   const createReserve = async () => {
-    if (!user) return toast.error("Sessão expirada.");
-    if (!ownerEntityId) return toast.error("Selecione a entidade.");
-    if (!name.trim()) return toast.error("Informe o nome da reserva.");
+    if (!user) { toast.error("Sessão expirada."); return; }
+    if (!ownerEntityId) { toast.error("Selecione a entidade."); return; }
+    if (!name.trim()) { toast.error("Informe o nome da reserva."); return; }
     const goal = parseMoney(targetAmount || "0");
     const currentValue = parseMoney(currentAmount || "0");
     if (!Number.isFinite(goal) || !Number.isFinite(currentValue) || goal < 0 || currentValue < 0) {
-      return toast.error("Informe valores válidos.");
+      toast.error("Informe valores válidos.");
+      return;
     }
 
     setBusy(true);
@@ -76,7 +77,7 @@ function Reservas() {
       .select("id")
       .single();
     setBusy(false);
-    if (error || !created) return toast.error(error?.message ?? "Não foi possível criar a reserva.");
+    if (error || !created) { toast.error(error?.message ?? "Não foi possível criar a reserva."); return; }
 
     await supabase.from("audit_log").insert({
       user_id: user.id,
@@ -94,9 +95,9 @@ function Reservas() {
   const updateCurrent = async (id: string, value: string) => {
     if (!user) return;
     const amount = parseMoney(value);
-    if (!Number.isFinite(amount) || amount < 0) return toast.error("Valor inválido.");
+    if (!Number.isFinite(amount) || amount < 0) { toast.error("Valor inválido."); return; }
     const { error } = await supabase.from("reserves").update({ current_amount: amount }).eq("id", id).eq("user_id", user.id).eq("is_demo", false);
-    if (error) return toast.error(error.message);
+    if (error) { toast.error(error.message); return; }
     await supabase.from("audit_log").insert({ user_id: user.id, table_name: "reserves", record_id: id, action: "update", details: { current_amount: amount } });
     toast.success("Reserva atualizada.");
     refresh();
@@ -105,7 +106,7 @@ function Reservas() {
   const removeReserve = async (id: string) => {
     if (!user) return;
     const { error } = await supabase.from("reserves").delete().eq("id", id).eq("user_id", user.id).eq("is_demo", false);
-    if (error) return toast.error(error.message);
+    if (error) { toast.error(error.message); return; }
     await supabase.from("audit_log").insert({ user_id: user.id, table_name: "reserves", record_id: id, action: "delete" });
     toast.success("Reserva removida.");
     refresh();

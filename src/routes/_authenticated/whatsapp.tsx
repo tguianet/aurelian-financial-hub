@@ -73,7 +73,7 @@ function WhatsAppFinance() {
   useEffect(() => { void load(); }, [user?.id]);
 
   const saveSettings = async () => {
-    if (!user) return toast.error("Sessão expirada.");
+    if (!user) { toast.error("Sessão expirada."); return; }
     const payload = {
       user_id: user.id,
       display_phone_number: phone.trim() || null,
@@ -84,15 +84,15 @@ function WhatsAppFinance() {
     const { error } = await (supabase as any)
       .from("whatsapp_settings")
       .upsert(payload, { onConflict: "user_id" });
-    if (error) return toast.error(error.message);
+    if (error) { toast.error(error.message); return; }
     toast.success("Configuração salva. O token deve ser configurado como secret do backend, nunca nesta tela.");
     await load();
   };
 
   const simulateCommand = async () => {
-    if (!user) return toast.error("Sessão expirada.");
+    if (!user) { toast.error("Sessão expirada."); return; }
     const message = testMessage.trim();
-    if (!message) return toast.error("Digite um comando para testar.");
+    if (!message) { toast.error("Digite um comando para testar."); return; }
     const { error } = await supabase.from("whatsapp_commands").insert({
       user_id: user.id,
       is_demo: false,
@@ -101,7 +101,7 @@ function WhatsAppFinance() {
       status: "received",
       parsed: null,
     });
-    if (error) return toast.error(error.message);
+    if (error) { toast.error(error.message); return; }
     toast.success("Comando colocado na fila de processamento.");
     await load();
   };
