@@ -57,6 +57,13 @@ function inferKind(text: string): Draft["kind"] {
   return incomeWords.some((word) => n.includes(word)) ? "income" : "expense";
 }
 
+function removeEntityMention(text: string, entityName?: string) {
+  if (!entityName) return normalize(text);
+  const normalizedText = normalize(text);
+  const normalizedEntity = normalize(entityName);
+  return normalizedText.replaceAll(normalizedEntity, " ").replace(/\s+/g, " ").trim();
+}
+
 export function MobileQuickEntry() {
   const { data, entityId: selectedEntityId } = useEntityScope();
   const { user } = useAuthUser();
@@ -89,15 +96,17 @@ export function MobileQuickEntry() {
       data.accounts.find((a) => a.entity_id === entity.id);
     if (!account) return null;
 
+    const categoryText = removeEntityMention(originalText, explicitEntity?.name);
     const categories = data.categories.filter((c) => c.kind === kind);
-    const category = categories.find((c) => n.includes(normalize(c.name))) ??
+    const category = categories.find((c) => categoryText.includes(normalize(c.name))) ??
       categories.find((c) => {
         const cn = normalize(c.name);
-        if (cn.includes("combustivel") && /(gasolina|etanol|alcool|posto|combustivel)/.test(n)) return true;
-        if (cn.includes("alimentacao") && /(comida|almoco|janta|mercado)/.test(n)) return true;
-        if (cn.includes("energia") && /(energia|luz|eletrica)/.test(n)) return true;
-        if (cn.includes("comiss") && /(comissao|comparta|energia por assinatura)/.test(n)) return true;
-        if (cn.includes("venda") && /(vendi|venda|faturei)/.test(n)) return true;
+        if (cn.includes("manutencao") && /(manutencao|conserto|reparo|oficina)/.test(categoryText)) return true;
+        if (cn.includes("combustivel") && /(gasolina|etanol|alcool|posto|combustivel)/.test(categoryText)) return true;
+        if (cn.includes("alimentacao") && /(comida|almoco|janta|mercado)/.test(categoryText)) return true;
+        if (cn.includes("energia") && /(conta de luz|energia eletrica|luz)/.test(categoryText)) return true;
+        if (cn.includes("comiss") && /(comissao|comparta|energia por assinatura)/.test(categoryText)) return true;
+        if (cn.includes("venda") && /(vendi|venda|faturei)/.test(categoryText)) return true;
         return false;
       }) ?? null;
 
