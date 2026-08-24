@@ -24,6 +24,7 @@ import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/s
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useEntityScope } from "./EntityContext";
 import { MobileQuickEntry } from "./MobileQuickEntry";
+import { PwaInstallButton } from "./PwaInstallButton";
 import { ALL } from "@/lib/finance";
 
 const QUICK_ENTRY_SESSION_KEY = "aurelian_quick_entry_opened";
@@ -140,8 +141,8 @@ export function AppShell({ children }: { children: ReactNode }) {
       </aside>
 
       <div className="lg:pl-64">
-        <header className="sticky top-0 z-20 flex h-16 items-center justify-between gap-3 border-b border-border bg-background/85 px-4 backdrop-blur md:px-6">
-          <div className="flex items-center gap-2 sm:gap-3">
+        <header className="sticky top-0 z-20 flex h-16 items-center justify-between gap-2 border-b border-border bg-background/85 px-3 backdrop-blur md:px-6">
+          <div className="flex min-w-0 items-center gap-2">
             <Sheet open={open} onOpenChange={setOpen}>
               <SheetTrigger asChild><Button variant="ghost" size="icon" className="lg:hidden"><Menu className="size-5" /></Button></SheetTrigger>
               <SheetContent side="left" className="w-72 bg-sidebar px-4 py-5">
@@ -161,8 +162,9 @@ export function AppShell({ children }: { children: ReactNode }) {
               <span className="hidden sm:inline">Lançamento rápido</span>
               <span className="sm:hidden">Lançar</span>
             </Button>
+            <PwaInstallButton />
           </div>
-          <EntitySelector />
+          <div className="min-w-0 max-w-[46%] sm:max-w-none"><EntitySelector /></div>
         </header>
         <main className="px-4 py-6 md:px-6 md:py-8">{children}</main>
       </div>
