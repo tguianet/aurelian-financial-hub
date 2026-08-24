@@ -58,7 +58,7 @@ function Entidades() {
   const [busy, setBusy] = useState(false);
   const [name, setName] = useState("");
   const [kind, setKind] = useState<"personal" | "company">("company");
-  const [color, setColor] = useState(DEFAULT_COLORS[0]);
+  const [color, setColor] = useState(DEFAULT_COLORS[0] ?? "#EAB308");
 
   const createEntity = async () => {
     if (!user) { toast.error("Sessão expirada."); return; }
