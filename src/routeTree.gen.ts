@@ -17,6 +17,7 @@ import { Route as AuthenticatedContasRouteImport } from './routes/_authenticated
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedDocumentosRouteImport } from './routes/_authenticated/documentos'
 import { Route as AuthenticatedEntidadesRouteImport } from './routes/_authenticated/entidades'
+import { Route as AuthenticatedFamiliaRouteImport } from './routes/_authenticated/familia'
 import { Route as AuthenticatedLancamentosRouteImport } from './routes/_authenticated/lancamentos'
 import { Route as AuthenticatedOrcamentoRouteImport } from './routes/_authenticated/orcamento'
 import { Route as AuthenticatedPendenciasRouteImport } from './routes/_authenticated/pendencias'
@@ -24,6 +25,7 @@ import { Route as AuthenticatedProjecaoRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedRelatoriosRouteImport } from './routes/_authenticated/relatorios'
 import { Route as AuthenticatedReservasRouteImport } from './routes/_authenticated/reservas'
 import { Route as AuthenticatedWhatsappRouteImport } from './routes/_authenticated/whatsapp'
+import { Route as ConviteTokenRouteImport } from './routes/convite.$token'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -64,6 +66,11 @@ const AuthenticatedEntidadesRoute = AuthenticatedEntidadesRouteImport.update({
   path: '/entidades',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedFamiliaRoute = AuthenticatedFamiliaRouteImport.update({
+  id: '/familia',
+  path: '/familia',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedLancamentosRoute =
   AuthenticatedLancamentosRouteImport.update({
     id: '/lancamentos',
@@ -100,6 +107,11 @@ const AuthenticatedWhatsappRoute = AuthenticatedWhatsappRouteImport.update({
   path: '/whatsapp',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const ConviteTokenRoute = ConviteTokenRouteImport.update({
+  id: '/convite/$token',
+  path: '/convite/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -109,6 +121,7 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/documentos': typeof AuthenticatedDocumentosRoute
   '/entidades': typeof AuthenticatedEntidadesRoute
+  '/familia': typeof AuthenticatedFamiliaRoute
   '/lancamentos': typeof AuthenticatedLancamentosRoute
   '/orcamento': typeof AuthenticatedOrcamentoRoute
   '/pendencias': typeof AuthenticatedPendenciasRoute
@@ -116,6 +129,7 @@ export interface FileRoutesByFullPath {
   '/relatorios': typeof AuthenticatedRelatoriosRoute
   '/reservas': typeof AuthenticatedReservasRoute
   '/whatsapp': typeof AuthenticatedWhatsappRoute
+  '/convite/$token': typeof ConviteTokenRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -125,6 +139,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/documentos': typeof AuthenticatedDocumentosRoute
   '/entidades': typeof AuthenticatedEntidadesRoute
+  '/familia': typeof AuthenticatedFamiliaRoute
   '/lancamentos': typeof AuthenticatedLancamentosRoute
   '/orcamento': typeof AuthenticatedOrcamentoRoute
   '/pendencias': typeof AuthenticatedPendenciasRoute
@@ -132,6 +147,7 @@ export interface FileRoutesByTo {
   '/relatorios': typeof AuthenticatedRelatoriosRoute
   '/reservas': typeof AuthenticatedReservasRoute
   '/whatsapp': typeof AuthenticatedWhatsappRoute
+  '/convite/$token': typeof ConviteTokenRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -143,6 +159,7 @@ export interface FileRoutesById {
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/documentos': typeof AuthenticatedDocumentosRoute
   '/_authenticated/entidades': typeof AuthenticatedEntidadesRoute
+  '/_authenticated/familia': typeof AuthenticatedFamiliaRoute
   '/_authenticated/lancamentos': typeof AuthenticatedLancamentosRoute
   '/_authenticated/orcamento': typeof AuthenticatedOrcamentoRoute
   '/_authenticated/pendencias': typeof AuthenticatedPendenciasRoute
@@ -150,6 +167,7 @@ export interface FileRoutesById {
   '/_authenticated/relatorios': typeof AuthenticatedRelatoriosRoute
   '/_authenticated/reservas': typeof AuthenticatedReservasRoute
   '/_authenticated/whatsapp': typeof AuthenticatedWhatsappRoute
+  '/convite/$token': typeof ConviteTokenRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -161,6 +179,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/documentos'
     | '/entidades'
+    | '/familia'
     | '/lancamentos'
     | '/orcamento'
     | '/pendencias'
@@ -168,6 +187,7 @@ export interface FileRouteTypes {
     | '/relatorios'
     | '/reservas'
     | '/whatsapp'
+    | '/convite/$token'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -177,6 +197,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/documentos'
     | '/entidades'
+    | '/familia'
     | '/lancamentos'
     | '/orcamento'
     | '/pendencias'
@@ -184,6 +205,7 @@ export interface FileRouteTypes {
     | '/relatorios'
     | '/reservas'
     | '/whatsapp'
+    | '/convite/$token'
   id:
     | '__root__'
     | '/'
@@ -194,6 +216,7 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard'
     | '/_authenticated/documentos'
     | '/_authenticated/entidades'
+    | '/_authenticated/familia'
     | '/_authenticated/lancamentos'
     | '/_authenticated/orcamento'
     | '/_authenticated/pendencias'
@@ -201,12 +224,14 @@ export interface FileRouteTypes {
     | '/_authenticated/relatorios'
     | '/_authenticated/reservas'
     | '/_authenticated/whatsapp'
+    | '/convite/$token'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
+  ConviteTokenRoute: typeof ConviteTokenRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -267,6 +292,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedEntidadesRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/familia': {
+      id: '/_authenticated/familia'
+      path: '/familia'
+      fullPath: '/familia'
+      preLoaderRoute: typeof AuthenticatedFamiliaRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/lancamentos': {
       id: '/_authenticated/lancamentos'
       path: '/lancamentos'
@@ -316,6 +348,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedWhatsappRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/convite/$token': {
+      id: '/convite/$token'
+      path: '/convite/$token'
+      fullPath: '/convite/$token'
+      preLoaderRoute: typeof ConviteTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -325,6 +364,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedDocumentosRoute: typeof AuthenticatedDocumentosRoute
   AuthenticatedEntidadesRoute: typeof AuthenticatedEntidadesRoute
+  AuthenticatedFamiliaRoute: typeof AuthenticatedFamiliaRoute
   AuthenticatedLancamentosRoute: typeof AuthenticatedLancamentosRoute
   AuthenticatedOrcamentoRoute: typeof AuthenticatedOrcamentoRoute
   AuthenticatedPendenciasRoute: typeof AuthenticatedPendenciasRoute
@@ -340,6 +380,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedDocumentosRoute: AuthenticatedDocumentosRoute,
   AuthenticatedEntidadesRoute: AuthenticatedEntidadesRoute,
+  AuthenticatedFamiliaRoute: AuthenticatedFamiliaRoute,
   AuthenticatedLancamentosRoute: AuthenticatedLancamentosRoute,
   AuthenticatedOrcamentoRoute: AuthenticatedOrcamentoRoute,
   AuthenticatedPendenciasRoute: AuthenticatedPendenciasRoute,
@@ -356,6 +397,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
+  ConviteTokenRoute: ConviteTokenRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
