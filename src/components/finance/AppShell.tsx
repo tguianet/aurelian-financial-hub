@@ -25,7 +25,7 @@ import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/s
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useEntityScope } from "./EntityContext";
 import { MobileQuickEntry } from "./MobileQuickEntry";
-import { QuickDocumentUpload } from "./QuickDocumentUpload";
+import { QuickDocumentUpload, type UploadedDocument } from "./QuickDocumentUpload";
 import { PwaInstallButton } from "./PwaInstallButton";
 import { ALL } from "@/lib/finance";
 
@@ -100,6 +100,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [quickEntryOpen, setQuickEntryOpen] = useState(false);
+  const [documents, setDocuments] = useState<UploadedDocument[]>([]);
 
   useEffect(() => {
     try {
@@ -133,8 +134,8 @@ export function AppShell({ children }: { children: ReactNode }) {
               Fale, digite, fotografe ou importe um documento. O Aurelian mantém tudo privado.
             </DialogDescription>
           </DialogHeader>
-          <MobileQuickEntry />
-          <QuickDocumentUpload />
+          <MobileQuickEntry documents={documents} />
+          <QuickDocumentUpload onDocumentsChange={setDocuments} />
         </DialogContent>
       </Dialog>
 
