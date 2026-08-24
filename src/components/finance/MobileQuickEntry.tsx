@@ -42,12 +42,29 @@ const normalize = (value: string) =>
   value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
 function parseAmount(text: string) {
-  const matches = text.match(/\d[\d.]*([,.]\d{1,2})?/g) ?? [];
-  for (const raw of matches) {
-    const clean = raw.includes(",") ? raw.replace(/\./g, "").replace(",", ".") : raw;
+  const matches = text.match(/\d[\d.,]*/g) ?? [];
+
+  for (const rawMatch of matches) {
+    const raw = rawMatch.replace(/[^\d.,]/g, "");
+    if (!raw) continue;
+
+    let clean: string;
+
+    if (raw.includes(",")) {
+      // pt-BR: 1.850,75 -> 1850.75
+      clean = raw.replace(/\./g, "").replace(",", ".");
+    } else if (/^\d{1,3}(\.\d{3})+$/.test(raw)) {
+      // pt-BR thousands: 1.850 -> 1850 / 12.500 -> 12500
+      clean = raw.replace(/\./g, "");
+    } else {
+      // Plain integer or decimal typed with dot: 1850 / 18.50
+      clean = raw;
+    }
+
     const amount = Number(clean);
     if (Number.isFinite(amount) && amount > 0) return amount;
   }
+
   return null;
 }
 
@@ -111,7 +128,7 @@ export function MobileQuickEntry() {
       }) ?? null;
 
     const stripped = originalText
-      .replace(/\d[\d.]*([,.]\d{1,2})?/, "")
+      .replace(/\d[\d.,]*/, "")
       .replace(/\b(gastei|paguei|comprei|recebi|entrou|vendi|ganhei|faturei|reais|real|r\$)\b/gi, "")
       .replace(/\s+/g, " ").trim();
 
