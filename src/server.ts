@@ -97,14 +97,14 @@ function financeSchema() {
     additionalProperties: false,
     properties: {
       kind: { type: "string", enum: ["income", "expense"] },
-      amount: { type: "number", exclusiveMinimum: 0 },
+      amount: { type: "number" },
       entity_id: { type: ["string", "null"] },
       category_id: { type: ["string", "null"] },
       account_id: { type: ["string", "null"] },
-      description: { type: "string", minLength: 1, maxLength: 120 },
+      description: { type: "string" },
       document_date: { type: ["string", "null"] },
       vendor: { type: ["string", "null"] },
-      confidence: { type: "number", minimum: 0, maximum: 1 },
+      confidence: { type: "number" },
     },
     required: [
       "kind",
@@ -119,6 +119,21 @@ function financeSchema() {
     ],
   };
 }
+
+function normalizeInterpretation(raw: any): { ok: true; value: any } | { ok: false } {
+  if (!raw || typeof raw !== "object") return { ok: false };
+  const amount = Number(raw.amount);
+  if (!Number.isFinite(amount) || amount <= 0) return { ok: false };
+  let confidence = Number(raw.confidence);
+  if (!Number.isFinite(confidence)) confidence = 0.5;
+  confidence = Math.min(1, Math.max(0, confidence));
+  const kind = raw.kind === "income" ? "income" : "expense";
+  const description = typeof raw.description === "string" && raw.description.trim()
+    ? raw.description.trim().slice(0, 120)
+    : "Lançamento importado de documento";
+  return { ok: true, value: { ...raw, kind, amount, confidence, description } };
+}
+
 
 function financeContext(body: FinanceContext) {
   return {
