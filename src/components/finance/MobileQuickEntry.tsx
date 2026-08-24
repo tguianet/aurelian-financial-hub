@@ -246,8 +246,9 @@ export function MobileQuickEntry({ documents = [] }: Props) {
       }),
     });
     if (!response.ok) {
-      const detail = await response.json().catch(() => ({})) as { error?: string };
-      throw new Error(detail.error || "Falha ao ler documento.");
+      const detail = await response.json().catch(() => ({})) as { message?: string; error_code?: string; error?: string };
+      const suffix = detail.error_code ? ` (${detail.error_code})` : "";
+      throw new Error(`${detail.message || detail.error || "Falha ao ler documento."}${suffix}`);
     }
     const payload = await response.json() as { interpretation?: Parameters<typeof resolveAiDraft>[0] };
     return payload.interpretation ? resolveAiDraft(payload.interpretation, originalText) : null;
