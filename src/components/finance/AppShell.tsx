@@ -12,6 +12,7 @@ import {
   LineChart,
   FileBarChart,
   MessageCircle,
+  FolderOpen,
   Menu,
   LogOut,
   Sparkles,
@@ -24,6 +25,7 @@ import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/s
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useEntityScope } from "./EntityContext";
 import { MobileQuickEntry } from "./MobileQuickEntry";
+import { QuickDocumentUpload } from "./QuickDocumentUpload";
 import { PwaInstallButton } from "./PwaInstallButton";
 import { ALL } from "@/lib/finance";
 
@@ -32,6 +34,7 @@ const QUICK_ENTRY_SESSION_KEY = "aurelian_quick_entry_opened";
 const NAV = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/lancamentos", label: "Lançamentos", icon: ArrowLeftRight },
+  { to: "/documentos", label: "Documentos", icon: FolderOpen },
   { to: "/entidades", label: "Empresas", icon: Building2 },
   { to: "/contas", label: "Contas", icon: Wallet },
   { to: "/cartoes", label: "Cartões", icon: CreditCard },
@@ -127,10 +130,11 @@ export function AppShell({ children }: { children: ReactNode }) {
               <Sparkles className="size-5 text-primary" /> Lançamento rápido
             </DialogTitle>
             <DialogDescription>
-              Fale ou digite. O Aurelian interpreta e pede sua confirmação antes de salvar.
+              Fale, digite, fotografe ou importe um documento. O Aurelian mantém tudo privado.
             </DialogDescription>
           </DialogHeader>
           <MobileQuickEntry />
+          <QuickDocumentUpload />
         </DialogContent>
       </Dialog>
 
