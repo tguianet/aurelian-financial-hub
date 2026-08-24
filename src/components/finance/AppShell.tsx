@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   LayoutDashboard,
@@ -14,14 +14,19 @@ import {
   MessageCircle,
   Menu,
   LogOut,
+  Sparkles,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useEntityScope } from "./EntityContext";
+import { MobileQuickEntry } from "./MobileQuickEntry";
 import { ALL } from "@/lib/finance";
+
+const QUICK_ENTRY_SESSION_KEY = "aurelian_quick_entry_opened";
 
 const NAV = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -90,10 +95,44 @@ function EntitySelector() {
 export function AppShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
-  const signOut = async () => { await supabase.auth.signOut(); navigate({ to: "/auth" }); };
+  const [quickEntryOpen, setQuickEntryOpen] = useState(false);
+
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem(QUICK_ENTRY_SESSION_KEY) === "1") return;
+      sessionStorage.setItem(QUICK_ENTRY_SESSION_KEY, "1");
+      setQuickEntryOpen(true);
+    } catch {
+      setQuickEntryOpen(true);
+    }
+  }, []);
+
+  const signOut = async () => {
+    try {
+      sessionStorage.removeItem(QUICK_ENTRY_SESSION_KEY);
+    } catch {
+      // Storage pode estar indisponível em ambientes privados/restritos.
+    }
+    await supabase.auth.signOut();
+    navigate({ to: "/auth" });
+  };
 
   return (
     <div className="min-h-screen bg-background">
+      <Dialog open={quickEntryOpen} onOpenChange={setQuickEntryOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto border-primary/25 bg-background p-3 sm:max-w-xl sm:p-5">
+          <DialogHeader className="px-1 pt-1">
+            <DialogTitle className="flex items-center gap-2 text-lg">
+              <Sparkles className="size-5 text-primary" /> Lançamento rápido
+            </DialogTitle>
+            <DialogDescription>
+              Fale ou digite. O Aurelian interpreta e pede sua confirmação antes de salvar.
+            </DialogDescription>
+          </DialogHeader>
+          <MobileQuickEntry />
+        </DialogContent>
+      </Dialog>
+
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-sidebar-border bg-sidebar px-4 py-5 lg:flex">
         <Brand />
         <div className="mt-8 flex-1 overflow-y-auto"><NavList /></div>
@@ -102,7 +141,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       <div className="lg:pl-64">
         <header className="sticky top-0 z-20 flex h-16 items-center justify-between gap-3 border-b border-border bg-background/85 px-4 backdrop-blur md:px-6">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             <Sheet open={open} onOpenChange={setOpen}>
               <SheetTrigger asChild><Button variant="ghost" size="icon" className="lg:hidden"><Menu className="size-5" /></Button></SheetTrigger>
               <SheetContent side="left" className="w-72 bg-sidebar px-4 py-5">
@@ -112,7 +151,16 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <Button variant="ghost" className="mt-6 w-full justify-start gap-3 text-muted-foreground" onClick={signOut}><LogOut className="size-4" /> Sair</Button>
               </SheetContent>
             </Sheet>
-            <span className="hidden text-xs uppercase tracking-[0.2em] text-muted-foreground sm:block">Visão</span>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9 gap-2 border-primary/30 bg-primary/5 px-2.5 text-primary hover:bg-primary/10 sm:px-3"
+              onClick={() => setQuickEntryOpen(true)}
+            >
+              <Sparkles className="size-4" />
+              <span className="hidden sm:inline">Lançamento rápido</span>
+              <span className="sm:hidden">Lançar</span>
+            </Button>
           </div>
           <EntitySelector />
         </header>
