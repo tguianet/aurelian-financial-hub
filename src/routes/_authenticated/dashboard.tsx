@@ -3,7 +3,6 @@ import { Wallet, TrendingUp, TrendingDown, ArrowDownToLine, ArrowUpFromLine, Lin
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useEntityScope } from "@/components/finance/EntityContext";
 import { KpiCard } from "@/components/finance/KpiCard";
-import { MobileQuickEntry } from "@/components/finance/MobileQuickEntry";
 import { PageHeader } from "@/components/finance/PageHeader";
 import { TransactionDialog } from "@/components/finance/TransactionDialog";
 import {
@@ -70,10 +69,6 @@ function Dashboard() {
 
       {isLoading ? <p className="mb-4 text-sm text-muted-foreground">Carregando dados…</p> : null}
 
-      <div className="mb-5 lg:hidden">
-        <MobileQuickEntry />
-      </div>
-
       <div className="panel relative overflow-hidden p-5 md:p-8">
         <div className="pointer-events-none absolute -right-24 -top-24 size-72 rounded-full bg-primary/10 blur-3xl" />
         <div className="relative flex flex-wrap items-end justify-between gap-6">
@@ -137,10 +132,6 @@ function Dashboard() {
             </div>
           ))}
         </div>
-      </div>
-
-      <div className="mt-5 hidden lg:block">
-        <MobileQuickEntry />
       </div>
     </div>
   );
