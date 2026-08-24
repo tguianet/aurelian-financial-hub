@@ -66,7 +66,7 @@ function parseInstallment(text: string) {
   const match = text.match(/\b(\d{1,2})\s*x\s*(?:de\s*)?(?:r\$\s*)?(\d[\d.,]*)/i);
   if (!match) return null;
   const count = Number(match[1]);
-  const installmentAmount = parseBrazilianNumber(match[2]);
+  const installmentAmount = parseBrazilianNumber(match[2] ?? "");
   if (!Number.isInteger(count) || count < 2 || count > 60 || !installmentAmount) return null;
   return { count, installmentAmount, totalAmount: Math.round(count * installmentAmount * 100) / 100, matchedText: match[0] };
 }
@@ -100,7 +100,7 @@ function removeEntityMention(text: string, entityName?: string) {
 }
 
 function monthlyIsoDate(baseIso: string, monthOffset: number) {
-  const [year, month, day] = baseIso.split("-").map(Number);
+  const [year = 1970, month = 1, day = 1] = baseIso.split("-").map(Number) as number[];
   const monthIndex = month - 1 + monthOffset;
   const targetYear = year + Math.floor(monthIndex / 12);
   const targetMonthIndex = ((monthIndex % 12) + 12) % 12;
@@ -196,7 +196,7 @@ export function MobileQuickEntry({ documents = [] }: Props) {
     const result: Draft = {
       kind, amount, entityId: entity.id, categoryId: category?.id ?? null, accountId: account.id,
       description: stripped || (kind === "income" ? "Entrada rápida" : "Saída rápida"),
-      originalText, parser: "local", installmentCount: installment?.count, totalAmount: installment?.totalAmount,
+      originalText, parser: "local", ...(installment ? { installmentCount: installment.count, totalAmount: installment.totalAmount } : {}),
       pending: inferPending(originalText, kind),
     };
     const confident = Boolean(category) && (Boolean(installment) || Boolean(explicitEntity) || selectedEntityId !== "all");
@@ -246,8 +246,9 @@ export function MobileQuickEntry({ documents = [] }: Props) {
       }),
     });
     if (!response.ok) {
-      const detail = await response.json().catch(() => ({})) as { error?: string };
-      throw new Error(detail.error || "Falha ao ler documento.");
+      const detail = await response.json().catch(() => ({})) as { message?: string; error_code?: string; error?: string };
+      const suffix = detail.error_code ? ` (${detail.error_code})` : "";
+      throw new Error(`${detail.message || detail.error || "Falha ao ler documento."}${suffix}`);
     }
     const payload = await response.json() as { interpretation?: Parameters<typeof resolveAiDraft>[0] };
     return payload.interpretation ? resolveAiDraft(payload.interpretation, originalText) : null;
@@ -255,8 +256,8 @@ export function MobileQuickEntry({ documents = [] }: Props) {
 
   const interpret = async (value = text) => {
     const originalText = value.trim();
-    if (!originalText && !documents.length) return toast.error("Digite, fale ou anexe um documento.");
-    if (!documents.length && !parseAmount(originalText)) return toast.error("Não encontrei o valor. Ex.: gastei 180 combustível.");
+    if (!originalText && !documents.length) { toast.error("Digite, fale ou anexe um documento."); return; }
+    if (!documents.length && !parseAmount(originalText)) { toast.error("Não encontrei o valor. Ex.: gastei 180 combustível."); return; }
 
     setInterpreting(true);
     if (documents.length) {
@@ -303,7 +304,7 @@ export function MobileQuickEntry({ documents = [] }: Props) {
   };
 
   const startVoice = () => {
-    if (!speechSupported) return toast.error("Reconhecimento de voz não disponível neste navegador.");
+    if (!speechSupported) { toast.error("Reconhecimento de voz não disponível neste navegador."); return; }
     const Ctor = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!Ctor) return;
     const recognition = new Ctor();
@@ -336,12 +337,12 @@ export function MobileQuickEntry({ documents = [] }: Props) {
         user_id: user.id, entity_id: draft.entityId, kind: draft.kind, description: draft.description, amount: draft.amount,
         category_id: draft.categoryId, account_id: draft.accountId, payment_method: "other",
         competence_date: monthlyIsoDate(txDate, index), due_date: monthlyIsoDate(txDate, index), paid_at: null,
-        status: "pending", recurrence: "none", installment_no: index + 1, installment_total: draft.installmentCount,
+        status: "pending", recurrence: "none", installment_no: index + 1, installment_total: draft.installmentCount ?? null,
         source, notes: `Comando original: ${draft.originalText || "Documento anexado"}`,
       }));
       const { error } = await supabase.from("transactions").insert(rows);
       setSaving(false);
-      if (error) return toast.error(error.message);
+      if (error) { toast.error(error.message); return; }
       toast.success(`${draft.installmentCount} parcelas criadas no contas a pagar.`);
     } else {
       const isPending = Boolean(draft.pending);
@@ -354,7 +355,7 @@ export function MobileQuickEntry({ documents = [] }: Props) {
         notes: `Comando original: ${draft.originalText || "Documento anexado"}${draft.vendor ? ` | Documento: ${draft.vendor}` : ""}`,
       });
       setSaving(false);
-      if (error) return toast.error(error.message);
+      if (error) { toast.error(error.message); return; }
       toast.success(isPending ? (draft.kind === "income" ? "Conta a receber criada." : "Conta a pagar criada.") : "Lançamento confirmado.");
     }
 

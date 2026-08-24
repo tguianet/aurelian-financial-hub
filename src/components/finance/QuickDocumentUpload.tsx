@@ -128,16 +128,16 @@ export function QuickDocumentUpload({ onDocumentsChange }: Props) {
   const takePhoto = async () => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
-    if (!video || !canvas || !video.videoWidth || !video.videoHeight) return toast.error("A câmera ainda não está pronta.");
+    if (!video || !canvas || !video.videoWidth || !video.videoHeight) { toast.error("A câmera ainda não está pronta."); return; }
 
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     const context = canvas.getContext("2d");
-    if (!context) return toast.error("Não consegui capturar a foto.");
+    if (!context) { toast.error("Não consegui capturar a foto."); return; }
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
 
     const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.9));
-    if (!blob) return toast.error("Não consegui gerar a foto.");
+    if (!blob) { toast.error("Não consegui gerar a foto."); return; }
 
     const file = new File([blob], `foto-${new Date().toISOString().replace(/[:.]/g, "-")}.jpg`, { type: "image/jpeg" });
     closeCamera();
@@ -146,7 +146,7 @@ export function QuickDocumentUpload({ onDocumentsChange }: Props) {
 
   const removeUploaded = async (item: UploadedDocument) => {
     const { error } = await supabase.storage.from("financial-documents").remove([item.path]);
-    if (error) return toast.error(error.message);
+    if (error) { toast.error(error.message); return; }
     updateUploaded(uploaded.filter((entry) => entry.path !== item.path));
     toast.success("Documento removido.");
   };

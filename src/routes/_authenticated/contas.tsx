@@ -63,12 +63,12 @@ function Contas() {
   const [openingBalance, setOpeningBalance] = useState("0,00");
 
   const createAccount = async () => {
-    if (!user) return toast.error("Sessão expirada.");
-    if (!ownerEntityId) return toast.error("Selecione a entidade financeira.");
+    if (!user) { toast.error("Sessão expirada."); return; }
+    if (!ownerEntityId) { toast.error("Selecione a entidade financeira."); return; }
     const cleanName = name.trim();
-    if (!cleanName) return toast.error("Informe o nome da conta.");
+    if (!cleanName) { toast.error("Informe o nome da conta."); return; }
     const balance = parseMoney(openingBalance);
-    if (!Number.isFinite(balance)) return toast.error("Informe um saldo inicial válido.");
+    if (!Number.isFinite(balance)) { toast.error("Informe um saldo inicial válido."); return; }
 
     setBusy(true);
     const { data: created, error } = await supabase
@@ -110,7 +110,7 @@ function Contas() {
   };
 
   const toggleActive = async (id: string, current: boolean, accountName: string) => {
-    if (!user) return toast.error("Sessão expirada.");
+    if (!user) { toast.error("Sessão expirada."); return; }
     const { error } = await supabase
       .from("accounts")
       .update({ active: !current })
@@ -118,7 +118,7 @@ function Contas() {
       .eq("user_id", user.id)
       .eq("is_demo", false);
 
-    if (error) return toast.error(error.message);
+    if (error) { toast.error(error.message); return; }
 
     await supabase.from("audit_log").insert({
       user_id: user.id,

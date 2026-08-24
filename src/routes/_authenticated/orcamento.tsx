@@ -49,11 +49,11 @@ function Orcamento() {
   const month = `${ref.getFullYear()}-${String(ref.getMonth() + 1).padStart(2, "0")}-01`;
 
   const saveBudget = async () => {
-    if (!user) return toast.error("Sessão expirada.");
-    if (!ownerEntityId) return toast.error("Selecione a entidade.");
-    if (!categoryId) return toast.error("Selecione a categoria.");
+    if (!user) { toast.error("Sessão expirada."); return; }
+    if (!ownerEntityId) { toast.error("Selecione a entidade."); return; }
+    if (!categoryId) { toast.error("Selecione a categoria."); return; }
     const value = parseMoney(amount);
-    if (!Number.isFinite(value) || value < 0) return toast.error("Informe um valor válido.");
+    if (!Number.isFinite(value) || value < 0) { toast.error("Informe um valor válido."); return; }
 
     setBusy(true);
     const existing = data.budgets.find(
@@ -71,7 +71,7 @@ function Orcamento() {
         });
     const { error } = await query;
     setBusy(false);
-    if (error) return toast.error(error.message);
+    if (error) { toast.error(error.message); return; }
 
     await supabase.from("audit_log").insert({
       user_id: user.id,
@@ -91,7 +91,7 @@ function Orcamento() {
   const removeBudget = async (id: string) => {
     if (!user) return;
     const { error } = await supabase.from("budgets").delete().eq("id", id).eq("user_id", user.id).eq("is_demo", false);
-    if (error) return toast.error(error.message);
+    if (error) { toast.error(error.message); return; }
     await supabase.from("audit_log").insert({ user_id: user.id, table_name: "budgets", record_id: id, action: "delete" });
     toast.success("Orçamento removido.");
     refresh();

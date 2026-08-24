@@ -58,14 +58,14 @@ function Entidades() {
   const [busy, setBusy] = useState(false);
   const [name, setName] = useState("");
   const [kind, setKind] = useState<"personal" | "company">("company");
-  const [color, setColor] = useState(DEFAULT_COLORS[0]);
+  const [color, setColor] = useState(DEFAULT_COLORS[0] ?? "#EAB308");
 
   const createEntity = async () => {
-    if (!user) return toast.error("Sessão expirada.");
+    if (!user) { toast.error("Sessão expirada."); return; }
     const cleanName = name.trim();
-    if (!cleanName) return toast.error("Informe o nome da empresa ou entidade.");
+    if (!cleanName) { toast.error("Informe o nome da empresa ou entidade."); return; }
     const slug = slugify(cleanName);
-    if (!slug) return toast.error("Nome inválido.");
+    if (!slug) { toast.error("Nome inválido."); return; }
 
     setBusy(true);
     const { data: entity, error } = await supabase
@@ -121,7 +121,7 @@ function Entidades() {
   };
 
   const toggleActive = async (id: string, current: boolean, entityName: string) => {
-    if (!user) return toast.error("Sessão expirada.");
+    if (!user) { toast.error("Sessão expirada."); return; }
     const { error } = await supabase
       .from("financial_entities")
       .update({ active: !current })
@@ -129,7 +129,7 @@ function Entidades() {
       .eq("user_id", user.id)
       .eq("is_demo", false);
 
-    if (error) return toast.error(error.message);
+    if (error) { toast.error(error.message); return; }
 
     await supabase.from("audit_log").insert({
       user_id: user.id,

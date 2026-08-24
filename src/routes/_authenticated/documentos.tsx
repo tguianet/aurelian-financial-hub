@@ -46,7 +46,7 @@ function Documentos() {
       sortBy: { column: "created_at", order: "desc" },
     });
     setLoading(false);
-    if (error) return toast.error(error.message);
+    if (error) { toast.error(error.message); return; }
     setFiles((data ?? []) as DocumentFile[]);
   }, [user]);
 
@@ -58,7 +58,7 @@ function Documentos() {
     if (!user) return;
     const path = `${user.id}/inbox/${name}`;
     const { data, error } = await supabase.storage.from("financial-documents").createSignedUrl(path, 60);
-    if (error) return toast.error(error.message);
+    if (error) { toast.error(error.message); return; }
     window.open(data.signedUrl, "_blank", "noopener,noreferrer");
   };
 
@@ -66,7 +66,7 @@ function Documentos() {
     if (!user) return;
     const path = `${user.id}/inbox/${name}`;
     const { error } = await supabase.storage.from("financial-documents").remove([path]);
-    if (error) return toast.error(error.message);
+    if (error) { toast.error(error.message); return; }
     toast.success("Documento excluído.");
     void load();
   };
@@ -111,7 +111,7 @@ function Documentos() {
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {files.map((file) => {
             const Icon = iconFor(file.name);
-            const size = typeof file.metadata?.size === "number" ? file.metadata.size : null;
+            const size = typeof file.metadata?.["size"] === "number" ? (file.metadata["size"] as number) : null;
             return (
               <div key={file.name} className="rounded-xl border border-border bg-surface p-4">
                 <div className="flex items-start gap-3">

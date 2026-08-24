@@ -51,15 +51,15 @@ function NewCardDialog() {
   const accounts = data.accounts.filter((a) => a.entity_id === ownerEntityId && a.active);
 
   const submit = async () => {
-    if (!user) return toast.error("Sessão expirada.");
-    if (!ownerEntityId) return toast.error("Selecione a entidade.");
-    if (!name.trim()) return toast.error("Informe o nome do cartão.");
+    if (!user) { toast.error("Sessão expirada."); return; }
+    if (!ownerEntityId) { toast.error("Selecione a entidade."); return; }
+    if (!name.trim()) { toast.error("Informe o nome do cartão."); return; }
     const creditLimit = parseMoney(limit);
     const close = Number(closingDay);
     const due = Number(dueDay);
-    if (!Number.isFinite(creditLimit) || creditLimit < 0) return toast.error("Limite inválido.");
-    if (!Number.isInteger(close) || close < 1 || close > 31) return toast.error("Dia de fechamento inválido.");
-    if (!Number.isInteger(due) || due < 1 || due > 31) return toast.error("Dia de vencimento inválido.");
+    if (!Number.isFinite(creditLimit) || creditLimit < 0) { toast.error("Limite inválido."); return; }
+    if (!Number.isInteger(close) || close < 1 || close > 31) { toast.error("Dia de fechamento inválido."); return; }
+    if (!Number.isInteger(due) || due < 1 || due > 31) { toast.error("Dia de vencimento inválido."); return; }
 
     setBusy(true);
     const { data: created, error } = await supabase
@@ -81,7 +81,8 @@ function NewCardDialog() {
 
     if (error || !created) {
       setBusy(false);
-      return toast.error(error?.message ?? "Não foi possível criar o cartão.");
+      toast.error(error?.message ?? "Não foi possível criar o cartão.");
+      return;
     }
 
     await supabase.from("audit_log").insert({
@@ -160,12 +161,12 @@ function NewPurchaseDialog() {
   const categories = data.categories.filter((c) => c.kind === "expense");
 
   const submit = async () => {
-    if (!cardId) return toast.error("Selecione o cartão.");
-    if (!description.trim()) return toast.error("Informe a descrição.");
+    if (!cardId) { toast.error("Selecione o cartão."); return; }
+    if (!description.trim()) { toast.error("Informe a descrição."); return; }
     const total = parseMoney(amount);
     const count = Number(installments);
-    if (!Number.isFinite(total) || total <= 0) return toast.error("Valor inválido.");
-    if (!Number.isInteger(count) || count < 1 || count > 48) return toast.error("Parcelas devem estar entre 1 e 48.");
+    if (!Number.isFinite(total) || total <= 0) { toast.error("Valor inválido."); return; }
+    if (!Number.isInteger(count) || count < 1 || count > 48) { toast.error("Parcelas devem estar entre 1 e 48."); return; }
 
     setBusy(true);
     const { error } = await (supabase as any).rpc("create_credit_card_purchase", {
@@ -178,7 +179,7 @@ function NewPurchaseDialog() {
     });
     setBusy(false);
 
-    if (error) return toast.error(error.message);
+    if (error) { toast.error(error.message); return; }
 
     setOpen(false);
     setDescription("");

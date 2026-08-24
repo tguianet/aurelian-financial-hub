@@ -97,14 +97,14 @@ function financeSchema() {
     additionalProperties: false,
     properties: {
       kind: { type: "string", enum: ["income", "expense"] },
-      amount: { type: "number", exclusiveMinimum: 0 },
+      amount: { type: "number" },
       entity_id: { type: ["string", "null"] },
       category_id: { type: ["string", "null"] },
       account_id: { type: ["string", "null"] },
-      description: { type: "string", minLength: 1, maxLength: 120 },
+      description: { type: "string" },
       document_date: { type: ["string", "null"] },
       vendor: { type: ["string", "null"] },
-      confidence: { type: "number", minimum: 0, maximum: 1 },
+      confidence: { type: "number" },
     },
     required: [
       "kind",
@@ -119,6 +119,21 @@ function financeSchema() {
     ],
   };
 }
+
+function normalizeInterpretation(raw: any): { ok: true; value: any } | { ok: false } {
+  if (!raw || typeof raw !== "object") return { ok: false };
+  const amount = Number(raw.amount);
+  if (!Number.isFinite(amount) || amount <= 0) return { ok: false };
+  let confidence = Number(raw.confidence);
+  if (!Number.isFinite(confidence)) confidence = 0.5;
+  confidence = Math.min(1, Math.max(0, confidence));
+  const kind = raw.kind === "income" ? "income" : "expense";
+  const description = typeof raw.description === "string" && raw.description.trim()
+    ? raw.description.trim().slice(0, 120)
+    : "Lançamento importado de documento";
+  return { ok: true, value: { ...raw, kind, amount, confidence, description } };
+}
+
 
 function financeContext(body: FinanceContext) {
   return {
@@ -192,71 +207,39 @@ async function handleFinanceInterpret(request: Request, env: unknown): Promise<R
   }
 }
 
-async function uploadDocumentToOpenAI(apiKey: string, signedUrl: string, name: string, mimeType?: string) {
-  const source = await fetch(signedUrl);
-  if (!source.ok) throw new Error(`document_fetch_${source.status}`);
-  const bytes = await source.arrayBuffer();
-  if (bytes.byteLength > 20 * 1024 * 1024) throw new Error("document_too_large");
-
-  const form = new FormData();
-  form.append("purpose", "user_data");
-  form.append("file", new Blob([bytes], { type: mimeType || source.headers.get("content-type") || "application/octet-stream" }), name);
-
-  const upload = await fetch("https://api.openai.com/v1/files", {
-    method: "POST",
-    headers: { authorization: `Bearer ${apiKey}` },
-    body: form,
-  });
-  if (!upload.ok) {
-    const detail = await upload.text();
-    throw new Error(`openai_file_upload_${upload.status}:${detail.slice(0, 200)}`);
-  }
-  const payload = await upload.json() as { id?: string };
-  if (!payload.id) throw new Error("openai_file_missing_id");
-  return payload.id;
-}
-
-async function deleteOpenAIFile(apiKey: string, fileId: string) {
-  try {
-    await fetch(`https://api.openai.com/v1/files/${encodeURIComponent(fileId)}`, {
-      method: "DELETE",
-      headers: { authorization: `Bearer ${apiKey}` },
-    });
-  } catch {
-    // Limpeza best-effort; nunca bloqueia o lancamento.
-  }
-}
-
 async function handleDocumentInterpret(request: Request, env: unknown): Promise<Response> {
-  if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405);
-  if (!(await verifySupabaseUser(request, env))) return json({ error: "unauthorized" }, 401);
+  if (request.method !== "POST") return json({ error_code: "method_not_allowed", message: "Método não permitido." }, 405);
+  if (!(await verifySupabaseUser(request, env))) {
+    return json({ error_code: "unauthorized", message: "Sessão expirada. Entre novamente." }, 401);
+  }
 
   let body: DocumentInterpretBody;
   try {
     body = (await request.json()) as DocumentInterpretBody;
   } catch {
-    return json({ error: "invalid_json" }, 400);
+    return json({ error_code: "invalid_json", message: "Requisição inválida." }, 400);
   }
 
   const documents = (body.documents ?? []).slice(0, 3);
-  if (!documents.length) return json({ error: "no_documents" }, 400);
+  if (!documents.length) return json({ error_code: "no_documents", message: "Nenhum documento anexado." }, 400);
 
   const { supabaseUrl } = getSupabaseConfig(env);
-  if (!supabaseUrl) return json({ error: "backend_not_configured" }, 503);
+  if (!supabaseUrl) return json({ error_code: "backend_not_configured", message: "Backend não configurado." }, 503);
   const allowedOrigin = new URL(supabaseUrl).origin;
   for (const document of documents) {
     try {
-      if (new URL(document.signed_url).origin !== allowedOrigin) return json({ error: "invalid_document_url" }, 400);
+      if (new URL(document.signed_url).origin !== allowedOrigin) {
+        return json({ error_code: "invalid_document_url", message: "Link do documento inválido." }, 400);
+      }
     } catch {
-      return json({ error: "invalid_document_url" }, 400);
+      return json({ error_code: "invalid_document_url", message: "Link do documento inválido." }, 400);
     }
   }
 
   const apiKey = envValue(env, "OPENAI_API_KEY");
-  if (!apiKey) return json({ error: "ai_not_configured" }, 503);
+  if (!apiKey) return json({ error_code: "ai_not_configured", message: "IA não configurada neste ambiente." }, 503);
   const model = envValue(env, "OPENAI_MODEL") || "gpt-5.6-luna";
   const context = financeContext(body);
-  const uploadedFileIds: string[] = [];
 
   try {
     const content: Array<Record<string, unknown>> = [];
@@ -273,9 +256,7 @@ async function handleDocumentInterpret(request: Request, env: unknown): Promise<
       if (isImage) {
         content.push({ type: "input_image", image_url: document.signed_url, detail: "high" });
       } else {
-        const fileId = await uploadDocumentToOpenAI(apiKey, document.signed_url, document.name, document.mime_type);
-        uploadedFileIds.push(fileId);
-        content.push({ type: "input_file", file_id: fileId });
+        content.push({ type: "input_file", file_url: document.signed_url, filename: document.name });
       }
     }
 
@@ -300,25 +281,44 @@ async function handleDocumentInterpret(request: Request, env: unknown): Promise<
     if (!response.ok) {
       const detail = await response.text();
       console.error(`[OpenAI document interpret] ${response.status}: ${detail.slice(0, 800)}`);
-      return json({ error: "document_ai_unavailable" }, 502);
+      let apiMessage = "";
+      try {
+        apiMessage = String((JSON.parse(detail) as any)?.error?.message ?? "").slice(0, 200);
+      } catch {
+        apiMessage = "";
+      }
+      return json(
+        {
+          error_code: `openai_http_${response.status}`,
+          message: apiMessage || `A leitura do documento falhou (HTTP ${response.status}).`,
+        },
+        502,
+      );
     }
 
     const payload = await response.json();
     const output = extractResponseText(payload);
-    if (!output) return json({ error: "ai_empty_response" }, 502);
+    if (!output) return json({ error_code: "ai_empty_response", message: "A IA não retornou conteúdo para o documento." }, 502);
 
+    let parsed: unknown;
     try {
-      return json({ source: "openai_document", interpretation: JSON.parse(output) });
+      parsed = JSON.parse(output);
     } catch {
-      return json({ error: "ai_invalid_response" }, 502);
+      return json({ error_code: "ai_invalid_response", message: "A IA retornou um formato inesperado." }, 502);
     }
+
+    const normalized = normalizeInterpretation(parsed);
+    if (!normalized.ok) {
+      return json({ error_code: "ai_invalid_amount", message: "Não identifiquei um valor válido no documento." }, 422);
+    }
+
+    return json({ source: "openai_document", interpretation: normalized.value });
   } catch (error) {
     console.error("[Document interpret]", error);
-    return json({ error: "document_processing_failed" }, 502);
-  } finally {
-    await Promise.all(uploadedFileIds.map((id) => deleteOpenAIFile(apiKey, id)));
+    return json({ error_code: "document_processing_failed", message: "Não consegui processar o documento agora." }, 502);
   }
 }
+
 
 async function normalizeCatastrophicSsrResponse(response: Response): Promise<Response> {
   if (response.status < 500) return response;

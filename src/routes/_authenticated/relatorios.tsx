@@ -58,7 +58,7 @@ function Relatorios() {
   const byEntity = entitySummaries(data, today());
 
   const exportCsv = () => {
-    if (!validRange) return toast.error("Período inválido.");
+    if (!validRange) { toast.error("Período inválido."); return; }
     const header = ["Categoria", "Receitas", "Despesas", "Resultado"];
     const lines = rows.map((r) => [r.name, r.income.toFixed(2), r.expense.toFixed(2), (r.income - r.expense).toFixed(2)]);
     const content = "\uFEFF" + [header, ...lines].map((line) => line.map(csvCell).join(";")).join("\n");
