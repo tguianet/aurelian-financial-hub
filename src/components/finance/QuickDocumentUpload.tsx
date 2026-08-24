@@ -9,7 +9,11 @@ import { useAuthUser } from "@/hooks/useAuthUser";
 const MAX_FILE_SIZE = 20 * 1024 * 1024;
 const ACCEPTED = ".jpg,.jpeg,.png,.webp,.heic,.heif,.pdf,.csv,.xls,.xlsx,.doc,.docx,.txt";
 
-type Uploaded = { name: string; path: string };
+export type UploadedDocument = { name: string; path: string; mimeType: string };
+
+type Props = {
+  onDocumentsChange?: (documents: UploadedDocument[]) => void;
+};
 
 function safeFileName(name: string) {
   const parts = name.split(".");
@@ -18,7 +22,7 @@ function safeFileName(name: string) {
   return `${base.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "arquivo"}${ext}`;
 }
 
-export function QuickDocumentUpload() {
+export function QuickDocumentUpload({ onDocumentsChange }: Props) {
   const { user } = useAuthUser();
   const fileRef = useRef<HTMLInputElement>(null);
   const cameraFallbackRef = useRef<HTMLInputElement>(null);
@@ -26,10 +30,15 @@ export function QuickDocumentUpload() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [uploaded, setUploaded] = useState<Uploaded[]>([]);
+  const [uploaded, setUploaded] = useState<UploadedDocument[]>([]);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [cameraStarting, setCameraStarting] = useState(false);
   const [facingMode, setFacingMode] = useState<"environment" | "user">("environment");
+
+  const updateUploaded = (next: UploadedDocument[]) => {
+    setUploaded(next);
+    onDocumentsChange?.(next);
+  };
 
   const stopCamera = () => {
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -42,6 +51,7 @@ export function QuickDocumentUpload() {
   const uploadFiles = async (files: File[]) => {
     if (!files.length || !user) return;
     setUploading(true);
+    const added: UploadedDocument[] = [];
 
     for (const file of files) {
       if (file.size > MAX_FILE_SIZE) {
@@ -51,10 +61,11 @@ export function QuickDocumentUpload() {
 
       const name = safeFileName(file.name);
       const path = `${user.id}/inbox/${Date.now()}-${crypto.randomUUID()}-${name}`;
+      const mimeType = file.type || "application/octet-stream";
       const { error } = await supabase.storage.from("financial-documents").upload(path, file, {
         cacheControl: "3600",
         upsert: false,
-        contentType: file.type || undefined,
+        contentType: mimeType,
       });
 
       if (error) {
@@ -62,10 +73,11 @@ export function QuickDocumentUpload() {
         continue;
       }
 
-      setUploaded((current) => [...current, { name: file.name, path }]);
-      toast.success(`${file.name} salvo na Caixa de documentos.`);
+      added.push({ name: file.name, path, mimeType });
+      toast.success(`${file.name} salvo e pronto para leitura.`);
     }
 
+    if (added.length) updateUploaded([...uploaded, ...added]);
     setUploading(false);
     if (fileRef.current) fileRef.current.value = "";
     if (cameraFallbackRef.current) cameraFallbackRef.current.value = "";
@@ -116,9 +128,7 @@ export function QuickDocumentUpload() {
   const takePhoto = async () => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
-    if (!video || !canvas || !video.videoWidth || !video.videoHeight) {
-      return toast.error("A câmera ainda não está pronta.");
-    }
+    if (!video || !canvas || !video.videoWidth || !video.videoHeight) return toast.error("A câmera ainda não está pronta.");
 
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
@@ -134,10 +144,10 @@ export function QuickDocumentUpload() {
     await uploadFiles([file]);
   };
 
-  const removeUploaded = async (item: Uploaded) => {
+  const removeUploaded = async (item: UploadedDocument) => {
     const { error } = await supabase.storage.from("financial-documents").remove([item.path]);
     if (error) return toast.error(error.message);
-    setUploaded((current) => current.filter((entry) => entry.path !== item.path));
+    updateUploaded(uploaded.filter((entry) => entry.path !== item.path));
     toast.success("Documento removido.");
   };
 
@@ -164,22 +174,8 @@ export function QuickDocumentUpload() {
         </DialogContent>
       </Dialog>
 
-      <input
-        ref={cameraFallbackRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        className="hidden"
-        onChange={(event) => void uploadFiles(Array.from(event.target.files ?? []))}
-      />
-      <input
-        ref={fileRef}
-        type="file"
-        accept={ACCEPTED}
-        multiple
-        className="hidden"
-        onChange={(event) => void uploadFiles(Array.from(event.target.files ?? []))}
-      />
+      <input ref={cameraFallbackRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(event) => void uploadFiles(Array.from(event.target.files ?? []))} />
+      <input ref={fileRef} type="file" accept={ACCEPTED} multiple className="hidden" onChange={(event) => void uploadFiles(Array.from(event.target.files ?? []))} />
 
       <div className="grid grid-cols-2 gap-2">
         <Button type="button" variant="outline" className="h-11 gap-2" disabled={uploading} onClick={() => void openCamera()}>
@@ -191,7 +187,7 @@ export function QuickDocumentUpload() {
       </div>
 
       <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
-        Fotos, PDF, Excel/CSV, Word e TXT. Máximo de 20 MB por arquivo. Tudo fica privado na sua conta.
+        Fotos, PDF, Excel/CSV, Word e TXT. Máximo de 20 MB. Com anexo, o botão Interpretar lê o documento com IA.
       </p>
 
       {uploaded.length ? (
@@ -200,6 +196,7 @@ export function QuickDocumentUpload() {
             <div key={item.path} className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-xs">
               <FileSpreadsheet className="size-4 shrink-0 text-primary" />
               <span className="min-w-0 flex-1 truncate">{item.name}</span>
+              <span className="text-[10px] text-primary">pronto para ler</span>
               <button type="button" aria-label={`Remover ${item.name}`} className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground" onClick={() => void removeUploaded(item)}>
                 <X className="size-4" />
               </button>
