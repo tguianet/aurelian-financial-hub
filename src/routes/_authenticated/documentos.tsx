@@ -111,7 +111,7 @@ function Documentos() {
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {files.map((file) => {
             const Icon = iconFor(file.name);
-            const size = typeof file.metadata?.size === "number" ? file.metadata.size : null;
+            const size = typeof file.metadata?.["size"] === "number" ? (file.metadata["size"] as number) : null;
             return (
               <div key={file.name} className="rounded-xl border border-border bg-surface p-4">
                 <div className="flex items-start gap-3">
