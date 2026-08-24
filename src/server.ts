@@ -75,6 +75,15 @@ function extractResponseText(payload: any): string | null {
   return null;
 }
 
+async function handleAiStatus(request: Request, env: unknown): Promise<Response> {
+  if (request.method !== "GET") return json({ error: "method_not_allowed" }, 405);
+  if (!(await verifySupabaseUser(request, env))) return json({ error: "unauthorized" }, 401);
+
+  const configured = Boolean(envValue(env, "OPENAI_API_KEY"));
+  const model = envValue(env, "OPENAI_MODEL") || "gpt-5.6-luna";
+  return json({ configured, model });
+}
+
 async function handleFinanceInterpret(request: Request, env: unknown): Promise<Response> {
   if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405);
   if (!(await verifySupabaseUser(request, env))) return json({ error: "unauthorized" }, 401);
@@ -168,8 +177,6 @@ async function handleFinanceInterpret(request: Request, env: unknown): Promise<R
   }
 }
 
-// h3 swallows in-handler throws into a normal 500 Response with body
-// {"unhandled":true,"message":"HTTPError"} — try/catch alone never fires for those.
 async function normalizeCatastrophicSsrResponse(response: Response): Promise<Response> {
   if (response.status < 500) return response;
   const contentType = response.headers.get("content-type") ?? "";
@@ -198,6 +205,9 @@ export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
       const url = new URL(request.url);
+      if (url.pathname === "/api/finance/ai-status") {
+        return await handleAiStatus(request, env);
+      }
       if (url.pathname === "/api/finance/interpret") {
         return await handleFinanceInterpret(request, env);
       }
