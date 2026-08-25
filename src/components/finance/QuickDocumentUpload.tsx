@@ -5,11 +5,20 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuthUser } from "@/hooks/useAuthUser";
+import { useFinanceAccess } from "@/hooks/useFinanceAccess";
+import { rpcErrorMessage } from "@/lib/rpc-error";
+import { sha256File } from "@/lib/document-hash";
 
 const MAX_FILE_SIZE = 20 * 1024 * 1024;
 const ACCEPTED = ".jpg,.jpeg,.png,.webp,.heic,.heif,.pdf,.csv,.xls,.xlsx,.doc,.docx,.txt";
 
-export type UploadedDocument = { name: string; path: string; mimeType: string };
+export type UploadedDocument = {
+  id?: string | null;
+  name: string;
+  path: string;
+  mimeType: string;
+  status?: string;
+};
 
 type Props = {
   onDocumentsChange?: (documents: UploadedDocument[]) => void;
@@ -24,6 +33,7 @@ function safeFileName(name: string) {
 
 export function QuickDocumentUpload({ onDocumentsChange }: Props) {
   const { user } = useAuthUser();
+  const { canWrite } = useFinanceAccess();
   const fileRef = useRef<HTMLInputElement>(null);
   const cameraFallbackRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -48,8 +58,9 @@ export function QuickDocumentUpload({ onDocumentsChange }: Props) {
 
   useEffect(() => () => stopCamera(), []);
 
-  const uploadFiles = async (files: File[]) => {
+  const uploadFiles = async (files: File[], source: "camera" | "upload" = "upload") => {
     if (!files.length || !user) return;
+    if (!canWrite) { toast.error("Seu acesso é somente leitura."); return; }
     setUploading(true);
     const added: UploadedDocument[] = [];
 
@@ -60,8 +71,24 @@ export function QuickDocumentUpload({ onDocumentsChange }: Props) {
       }
 
       const name = safeFileName(file.name);
-      const path = `${user.id}/inbox/${Date.now()}-${crypto.randomUUID()}-${name}`;
       const mimeType = file.type || "application/octet-stream";
+      const hash = await sha256File(file);
+
+      const existing = await supabase.rpc("find_financial_document_by_hash", { p_content_hash: hash });
+      const found = existing.data?.[0];
+      if (found?.document_id) {
+        toast.message(`${file.name} já foi enviado neste espaço.`);
+        added.push({
+          id: found.document_id,
+          name: file.name,
+          path: found.storage_path,
+          mimeType,
+          status: found.status,
+        });
+        continue;
+      }
+
+      const path = `${user.id}/inbox/${Date.now()}-${crypto.randomUUID()}-${name}`;
       const { error } = await supabase.storage.from("financial-documents").upload(path, file, {
         cacheControl: "3600",
         upsert: false,
@@ -73,7 +100,41 @@ export function QuickDocumentUpload({ onDocumentsChange }: Props) {
         continue;
       }
 
-      added.push({ name: file.name, path, mimeType });
+      const registered = await supabase.rpc("register_financial_document", {
+        p_storage_path: path,
+        p_file_name: file.name,
+        p_mime_type: mimeType,
+        p_size_bytes: file.size,
+        p_source: source,
+        p_content_hash: hash,
+      });
+      const row = registered.data?.[0];
+      if (registered.error || !row?.document_id) {
+        await supabase.rpc("mark_financial_document_failed", {
+          p_storage_path: path,
+          p_file_name: file.name,
+        });
+        toast.error(`Arquivo enviado, mas a catalogação falhou. ${rpcErrorMessage(registered.error, "Tente de novo.")}`);
+        added.push({ id: null, name: file.name, path, mimeType, status: "failed" });
+        continue;
+      }
+
+      if (row.is_duplicate) {
+        if (row.storage_path && row.storage_path !== path) {
+          await supabase.storage.from("financial-documents").remove([path]);
+        }
+        toast.message(`${file.name} já foi enviado neste espaço.`);
+        added.push({
+          id: row.document_id,
+          name: file.name,
+          path: row.storage_path || path,
+          mimeType,
+          status: row.status,
+        });
+        continue;
+      }
+
+      added.push({ id: row.document_id, name: file.name, path: row.storage_path || path, mimeType, status: row.status });
       toast.success(`${file.name} salvo e pronto para leitura.`);
     }
 
@@ -141,14 +202,24 @@ export function QuickDocumentUpload({ onDocumentsChange }: Props) {
 
     const file = new File([blob], `foto-${new Date().toISOString().replace(/[:.]/g, "-")}.jpg`, { type: "image/jpeg" });
     closeCamera();
-    await uploadFiles([file]);
+    await uploadFiles([file], "camera");
   };
 
   const removeUploaded = async (item: UploadedDocument) => {
-    const { error } = await supabase.storage.from("financial-documents").remove([item.path]);
-    if (error) { toast.error(error.message); return; }
-    updateUploaded(uploaded.filter((entry) => entry.path !== item.path));
-    toast.success("Documento removido.");
+    const linked = item.status === "linked" || item.status === "confirmed";
+    if (item.id) {
+      const archived = await supabase.rpc("archive_financial_document", { p_id: item.id });
+      if (archived.error) {
+        toast.error(rpcErrorMessage(archived.error, "Não foi possível arquivar o documento."));
+        return;
+      }
+    }
+    if (!linked) {
+      const { error } = await supabase.storage.from("financial-documents").remove([item.path]);
+      if (error) { toast.error(error.message); return; }
+    }
+    updateUploaded(uploaded.filter((entry) => entry.path !== item.path && entry.id !== item.id));
+    toast.success(linked ? "Documento arquivado. O lançamento foi mantido." : "Documento removido.");
   };
 
   return (
@@ -178,10 +249,10 @@ export function QuickDocumentUpload({ onDocumentsChange }: Props) {
       <input ref={fileRef} type="file" accept={ACCEPTED} multiple className="hidden" onChange={(event) => void uploadFiles(Array.from(event.target.files ?? []))} />
 
       <div className="grid grid-cols-2 gap-2">
-        <Button type="button" variant="outline" className="h-11 gap-2" disabled={uploading} onClick={() => void openCamera()}>
+        <Button type="button" variant="outline" className="h-11 gap-2" disabled={uploading || !canWrite} onClick={() => void openCamera()}>
           <Camera className="size-4" /> Tirar foto
         </Button>
-        <Button type="button" variant="outline" className="h-11 gap-2" disabled={uploading} onClick={() => fileRef.current?.click()}>
+        <Button type="button" variant="outline" className="h-11 gap-2" disabled={uploading || !canWrite} onClick={() => fileRef.current?.click()}>
           {uploading ? <Loader2 className="size-4 animate-spin" /> : <Paperclip className="size-4" />} Importar arquivo
         </Button>
       </div>

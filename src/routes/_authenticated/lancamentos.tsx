@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Ban } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuthUser } from "@/hooks/useAuthUser";
+import { useFinanceAccess } from "@/hooks/useFinanceAccess";
 import { useRefreshFinance } from "@/hooks/useFinance";
 import { useEntityScope } from "@/components/finance/EntityContext";
 import { DemoNotice, PageHeader } from "@/components/finance/PageHeader";
@@ -11,10 +11,13 @@ import { TransactionDialog } from "@/components/finance/TransactionDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { rpcErrorMessage } from "@/lib/rpc-error";
 import {
   brl,
   buildScope,
+  displayOpenStatus,
   fmtDate,
+  isCardCashMovement,
   KIND_LABEL,
   PAYMENT_LABEL,
   STATUS_LABEL,
@@ -42,7 +45,7 @@ export const Route = createFileRoute("/_authenticated/lancamentos")({
 
 function Lancamentos() {
   const { data, entityId, entityName } = useEntityScope();
-  const { user } = useAuthUser();
+  const { canWrite } = useFinanceAccess();
   const refresh = useRefreshFinance();
   const [kindFilter, setKindFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -57,7 +60,7 @@ function Lancamentos() {
         : scope.matchesEntity(t.entity_id);
     if (!inScope) return false;
     if (kindFilter !== "all" && t.kind !== kindFilter) return false;
-    if (statusFilter !== "all" && t.status !== statusFilter) return false;
+    if (statusFilter !== "all" && displayOpenStatus(t.status, t.due_date ?? t.competence_date) !== statusFilter) return false;
     if (term && !t.description.toLowerCase().includes(term.toLowerCase())) return false;
     return true;
   });
@@ -67,22 +70,14 @@ function Lancamentos() {
       toast.info("Registros de exemplo não podem ser alterados.");
       return;
     }
-    const { error } = await supabase
-      .from("transactions")
-      .update({ status: "cancelled" })
-      .eq("id", t.id);
-    if (error) {
-      toast.error(error.message);
+    if (!canWrite) {
+      toast.error("Seu acesso é somente leitura.");
       return;
     }
-    if (user) {
-      await supabase.from("audit_log").insert({
-        user_id: user.id,
-        table_name: "transactions",
-        record_id: t.id,
-        action: "cancel",
-        details: { description: t.description, amount: t.amount },
-      });
+    const { error } = await supabase.rpc("cancel_transaction", { p_id: t.id });
+    if (error) {
+      toast.error(rpcErrorMessage(error, "Não foi possível cancelar o lançamento."));
+      return;
     }
     toast.success("Lançamento cancelado (mantido na trilha de auditoria).");
     refresh();
@@ -159,7 +154,7 @@ function Lancamentos() {
                     <span className="text-[11px] text-muted-foreground">
                       {KIND_LABEL[t.kind as TxKind]}
                       {t.installment_total ? ` · parcela ${t.installment_no}/${t.installment_total}` : ""}
-                      {t.recurrence !== "none" ? " · recorrente" : ""}
+                      {t.recurring_transaction_id || t.recurrence !== "none" ? " · recorrente" : ""}
                     </span>
                   </Td>
                   <Td>{entity?.name ?? "—"}</Td>
@@ -171,7 +166,7 @@ function Lancamentos() {
                   <Td>{PAYMENT_LABEL[t.payment_method] ?? t.payment_method}</Td>
                   <Td>{fmtDate(t.due_date ?? t.competence_date)}</Td>
                   <Td>
-                    <StatusPill status={t.status} />
+                    <StatusPill status={t.status} dueDate={t.due_date ?? t.competence_date} />
                   </Td>
                   <Td className="text-right">
                     <span
@@ -187,7 +182,7 @@ function Lancamentos() {
                     </span>
                   </Td>
                   <Td className="text-right">
-                    {t.status !== "cancelled" && !t.is_demo ? (
+                    {t.status !== "cancelled" && !t.is_demo && !isCardCashMovement(t) && canWrite ? (
                       <Button variant="ghost" size="icon" onClick={() => cancel(t)} title="Cancelar">
                         <Ban className="size-4" />
                       </Button>
@@ -223,7 +218,8 @@ export function DemoTag() {
     </span>
   );
 }
-export function StatusPill({ status }: { status: string }) {
+export function StatusPill({ status, dueDate }: { status: string; dueDate?: string | null }) {
+  const shown = dueDate !== undefined ? displayOpenStatus(status, dueDate) : status;
   const map: Record<string, string> = {
     paid: "bg-success/15 text-success",
     received: "bg-success/15 text-success",
@@ -232,8 +228,8 @@ export function StatusPill({ status }: { status: string }) {
     cancelled: "bg-muted text-muted-foreground",
   };
   return (
-    <span className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${map[status] ?? "bg-muted"}`}>
-      {STATUS_LABEL[status as keyof typeof STATUS_LABEL] ?? status}
+    <span className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${map[shown] ?? "bg-muted"}`}>
+      {STATUS_LABEL[shown as keyof typeof STATUS_LABEL] ?? shown}
     </span>
   );
 }

@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { emptyDataset, type FinanceDataset } from "@/lib/finance";
+import { emptyDataset, type Category, type FinanceDataset } from "@/lib/finance";
 
 function preferPrivateData(data: FinanceDataset): FinanceDataset {
   const hasPrivateWorkspace = data.entities.some((e) => !e.is_demo);
@@ -22,7 +22,7 @@ function preferPrivateData(data: FinanceDataset): FinanceDataset {
   return {
     entities: data.entities.filter((e) => !e.is_demo),
     accounts: data.accounts.filter((a) => !a.is_demo && entityIds.has(a.entity_id)),
-    categories: data.categories.filter((c) => !c.is_demo),
+    categories: data.categories.filter((c) => !c.is_demo).map((c) => ({ ...c, active: c.active !== false })),
     cards: data.cards.filter((c) => !c.is_demo && entityIds.has(c.entity_id)),
     transactions: data.transactions.filter((t) => !t.is_demo && entityIds.has(t.entity_id)),
     purchases: data.purchases.filter(
@@ -41,6 +41,15 @@ function preferPrivateData(data: FinanceDataset): FinanceDataset {
 }
 
 async function fetchAll(): Promise<FinanceDataset> {
+  const space = await supabase.rpc("current_finance_space_id");
+  const spaceId = space.data;
+  if (spaceId) {
+    const write = await supabase.rpc("can_write_finance_space", { p_space_id: spaceId });
+    if (write.data) {
+      await supabase.rpc("generate_due_recurring_transactions");
+    }
+  }
+
   const [
     entities,
     accounts,
@@ -74,6 +83,18 @@ async function fetchAll(): Promise<FinanceDataset> {
     supabase.from("ai_insights").select("*").order("created_at", { ascending: false }),
   ]);
 
+  let categoryRows = (categories.data ?? []) as FinanceDataset["categories"];
+  if (!categoryRows.some((c) => !c.is_demo)) {
+    if (spaceId) {
+      const write = await supabase.rpc("can_write_finance_space", { p_space_id: spaceId });
+      if (write.data) {
+        await supabase.rpc("ensure_finance_default_categories", { p_space_id: spaceId });
+        const seeded = await supabase.from("categories").select("*").order("name");
+        if (!seeded.error) categoryRows = (seeded.data ?? categoryRows) as FinanceDataset["categories"];
+      }
+    }
+  }
+
   const first = [
     entities,
     accounts,
@@ -93,7 +114,7 @@ async function fetchAll(): Promise<FinanceDataset> {
     ...emptyDataset,
     entities: (entities.data ?? []) as FinanceDataset["entities"],
     accounts: (accounts.data ?? []) as FinanceDataset["accounts"],
-    categories: (categories.data ?? []) as FinanceDataset["categories"],
+    categories: categoryRows.map((c) => ({ ...c, active: c.active !== false })) as Category[],
     cards: (cards.data ?? []) as FinanceDataset["cards"],
     transactions: (transactions.data ?? []) as FinanceDataset["transactions"],
     purchases: (purchases.data ?? []) as FinanceDataset["purchases"],

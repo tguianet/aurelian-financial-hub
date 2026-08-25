@@ -1,10 +1,15 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { rpcErrorMessage } from "@/lib/rpc-error";
 import { useAuthUser } from "@/hooks/useAuthUser";
+import { useFinanceAccess } from "@/hooks/useFinanceAccess";
 import { useRefreshFinance } from "@/hooks/useFinance";
 import { useEntityScope } from "./EntityContext";
+import { selectableCategories } from "@/lib/categories";
+import { isValidDateIso, localDateIso } from "@/lib/date";
+import { parseBRLMoney } from "@/lib/money";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,12 +25,14 @@ import {
 } from "@/components/ui/dialog";
 
 function parseMoney(value: string) {
-  return Number(value.replace(/\s/g, "").replace(/\./g, "").replace(",", "."));
+  return parseBRLMoney(value);
 }
 
-const todayIso = () => new Date().toISOString().slice(0, 10);
+const todayIso = () => localDateIso();
 
 export function CreditCardActions() {
+  const { canWrite } = useFinanceAccess();
+  if (!canWrite) return null;
   return (
     <div className="flex flex-wrap gap-2">
       <NewCardDialog />
@@ -57,43 +64,26 @@ function NewCardDialog() {
     const creditLimit = parseMoney(limit);
     const close = Number(closingDay);
     const due = Number(dueDay);
-    if (!Number.isFinite(creditLimit) || creditLimit < 0) { toast.error("Limite inválido."); return; }
+    if (creditLimit === null || creditLimit < 0) { toast.error("Limite inválido."); return; }
     if (!Number.isInteger(close) || close < 1 || close > 31) { toast.error("Dia de fechamento inválido."); return; }
     if (!Number.isInteger(due) || due < 1 || due > 31) { toast.error("Dia de vencimento inválido."); return; }
 
     setBusy(true);
-    const { data: created, error } = await supabase
-      .from("credit_cards")
-      .insert({
-        user_id: user.id,
-        is_demo: false,
-        entity_id: ownerEntityId,
-        account_id: accountId || null,
-        name: name.trim(),
-        brand: brand.trim() || null,
-        credit_limit: creditLimit,
-        closing_day: close,
-        due_day: due,
-        active: true,
-      })
-      .select("id")
-      .single();
-
-    if (error || !created) {
-      setBusy(false);
-      toast.error(error?.message ?? "Não foi possível criar o cartão.");
+    const { error } = await supabase.rpc("create_credit_card", {
+      p_entity_id: ownerEntityId,
+      p_name: name.trim(),
+      p_credit_limit: creditLimit,
+      p_closing_day: close,
+      p_due_day: due,
+      p_account_id: accountId || null,
+      p_brand: brand.trim() || null,
+    });
+    setBusy(false);
+    if (error) {
+      toast.error(rpcErrorMessage(error, "Não foi possível criar o cartão."));
       return;
     }
 
-    await supabase.from("audit_log").insert({
-      user_id: user.id,
-      table_name: "credit_cards",
-      record_id: created.id,
-      action: "insert",
-      details: { name: name.trim(), entity_id: ownerEntityId, credit_limit: creditLimit },
-    });
-
-    setBusy(false);
     setOpen(false);
     setName("");
     setBrand("");
@@ -142,12 +132,19 @@ function NewCardDialog() {
   );
 }
 
-function NewPurchaseDialog() {
+export function NewPurchaseDialog({
+  defaultCardId,
+  children,
+}: {
+  defaultCardId?: string;
+  children?: ReactNode;
+}) {
   const { data, entityId } = useEntityScope();
+  const { canWrite } = useFinanceAccess();
   const refresh = useRefreshFinance();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [cardId, setCardId] = useState("");
+  const [cardId, setCardId] = useState(defaultCardId ?? "");
   const [categoryId, setCategoryId] = useState("");
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
@@ -158,18 +155,24 @@ function NewPurchaseDialog() {
     () => data.cards.filter((c) => c.active && (entityId === "all" || c.entity_id === entityId)),
     [data.cards, entityId],
   );
-  const categories = data.categories.filter((c) => c.kind === "expense");
+  const categories = selectableCategories(data.categories, "expense");
+
+  useEffect(() => {
+    if (open && defaultCardId) setCardId(defaultCardId);
+  }, [open, defaultCardId]);
 
   const submit = async () => {
+    if (!canWrite) { toast.error("Seu acesso é somente leitura."); return; }
     if (!cardId) { toast.error("Selecione o cartão."); return; }
     if (!description.trim()) { toast.error("Informe a descrição."); return; }
     const total = parseMoney(amount);
     const count = Number(installments);
-    if (!Number.isFinite(total) || total <= 0) { toast.error("Valor inválido."); return; }
+    if (total === null || total <= 0) { toast.error("Valor inválido."); return; }
     if (!Number.isInteger(count) || count < 1 || count > 48) { toast.error("Parcelas devem estar entre 1 e 48."); return; }
+    if (!isValidDateIso(purchaseDate)) { toast.error("Informe a data da compra."); return; }
 
     setBusy(true);
-    const { error } = await (supabase as any).rpc("create_credit_card_purchase", {
+    const { error } = await supabase.rpc("create_credit_card_purchase", {
       _credit_card_id: cardId,
       _category_id: categoryId || null,
       _description: description.trim(),
@@ -185,19 +188,23 @@ function NewPurchaseDialog() {
     setDescription("");
     setAmount("");
     setInstallments("1");
-    toast.success("Compra lançada com todas as parcelas.");
+    toast.success("Compra lançada. A despesa entra na data da compra; pagar a fatura não conta de novo.");
     refresh();
   };
+
+  if (!canWrite) return null;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button className="gap-2"><Plus className="size-4" /> Nova compra</Button>
+        {children ?? <Button className="gap-2"><Plus className="size-4" /> Nova compra</Button>}
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Nova compra no cartão</DialogTitle>
-          <DialogDescription>As parcelas são geradas automaticamente conforme fechamento e vencimento.</DialogDescription>
+          <DialogDescription>
+            Despesa econômica na data da compra. Parcelas entram na projeção até serem pagas. O pagamento da fatura só move caixa.
+          </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-2">
           <Field label="Cartão">

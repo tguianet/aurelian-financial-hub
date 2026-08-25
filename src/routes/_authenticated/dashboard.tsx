@@ -18,6 +18,7 @@ import {
   toDate,
   today,
 } from "@/lib/finance";
+import { addMoney } from "@/lib/money";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({ meta: [{ title: "Dashboard executivo — Aurelian Finance" }] }),
@@ -36,28 +37,23 @@ function Dashboard() {
   let receivables30 = 0;
   let payables30 = 0;
   let cardBills30 = 0;
-  let commitments30 = 0;
 
   for (const t of data.transactions) {
     if (t.kind === "transfer" || t.deleted_at || !isOpen(t) || !scope.matchesEntity(t.entity_id)) continue;
     const due = toDate(t.due_date ?? t.competence_date);
     if (due > horizon) continue;
-    if (t.kind === "income") receivables30 += Number(t.amount);
-    if (t.kind === "expense") payables30 += Number(t.amount);
+    if (t.kind === "income") receivables30 = addMoney(receivables30, Number(t.amount));
+    if (t.kind === "expense") payables30 = addMoney(payables30, Number(t.amount));
   }
 
   for (const installment of data.installments) {
     if (installment.status !== "pending" && installment.status !== "overdue") continue;
     if (!scope.cardIds.has(installment.credit_card_id)) continue;
-    if (toDate(installment.due_date) <= horizon) cardBills30 += Number(installment.amount);
+    if (toDate(installment.due_date) <= horizon) cardBills30 = addMoney(cardBills30, Number(installment.amount));
   }
 
-  for (const recurring of data.recurring) {
-    if (!recurring.active || recurring.kind !== "expense" || !scope.matchesEntity(recurring.entity_id)) continue;
-    if (!recurring.next_run || toDate(recurring.next_run) <= horizon) commitments30 += Number(recurring.amount);
-  }
-
-  const strictFreeCash = k.balance + receivables30 - payables30 - cardBills30 - k.reserves - commitments30;
+  const commitments30 = k.commitments;
+  const strictFreeCash = k.freeCash;
 
   return (
     <div className="min-w-0">
@@ -78,7 +74,7 @@ function Dashboard() {
               {brl(strictFreeCash)}
             </p>
             <p className="mt-2 max-w-xl text-[11px] leading-relaxed text-muted-foreground sm:text-xs">
-              Saldo realizado + recebimentos com vencimento em até 30 dias − contas a pagar em até 30 dias − parcelas de cartão em até 30 dias − reservas − compromissos recorrentes previstos no período.
+              Saldo realizado + recebimentos com vencimento em até 30 dias − contas a pagar em até 30 dias − parcelas de cartão em até 30 dias − reservas − recorrências ainda não geradas no período. Ocorrências já materializadas entram só em contas a pagar/receber.
             </p>
           </div>
           <div className="grid w-full grid-cols-2 gap-x-3 gap-y-3 text-xs sm:grid-cols-3 sm:gap-x-6 lg:w-auto lg:min-w-[430px]">
@@ -95,7 +91,7 @@ function Dashboard() {
       <div className="mt-4 grid grid-cols-1 gap-3 sm:mt-5 sm:grid-cols-2 sm:gap-4 xl:grid-cols-4">
         <KpiCard label="Saldo atual" value={brl(k.balance)} tone="gold" icon={<Wallet className="size-4" />} />
         <KpiCard label="Entradas do mês" value={brl(k.incomeMonth)} tone="positive" icon={<TrendingUp className="size-4" />} />
-        <KpiCard label="Saídas do mês" value={brl(k.expenseMonth)} tone="negative" icon={<TrendingDown className="size-4" />} />
+        <KpiCard label="Saídas do mês" value={brl(k.expenseMonth)} tone="negative" icon={<TrendingDown className="size-4" />} hint="Competência: compras no cartão na data da compra. Pagamento de fatura não entra." />
         <KpiCard label="Resultado do mês" value={brl(k.resultMonth)} tone={k.resultMonth >= 0 ? "positive" : "negative"} hint={`Transferências internas ignoradas: ${brl(k.internalTransfers)}`} />
         <KpiCard label="Total a receber" value={brl(k.receivables)} icon={<ArrowDownToLine className="size-4" />} hint={k.overdueReceivables > 0 ? `Vencidos: ${brl(k.overdueReceivables)}` : "Nada vencido"} />
         <KpiCard label="Total a pagar" value={brl(k.payables)} tone="negative" icon={<ArrowUpFromLine className="size-4" />} hint={k.overduePayables > 0 ? `Vencidos: ${brl(k.overduePayables)}` : "Nada vencido"} />

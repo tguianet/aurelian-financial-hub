@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { brl, categoryBreakdown, entitySummaries, toDate, today } from "@/lib/finance";
+import { firstOfMonthIso, localDateIso } from "@/lib/date";
 
 export const Route = createFileRoute("/_authenticated/relatorios")({
   head: () => createFileRouteHead(
@@ -22,8 +23,7 @@ export const Route = createFileRoute("/_authenticated/relatorios")({
 });
 
 function firstOfMonth() {
-  const d = today();
-  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
+  return firstOfMonthIso(today());
 }
 
 function csvCell(value: string | number) {
@@ -46,7 +46,7 @@ function downloadFile(content: string, filename: string, type: string) {
 function Relatorios() {
   const { data, entityId, entityName } = useEntityScope();
   const [from, setFrom] = useState(firstOfMonth());
-  const [to, setTo] = useState(new Date().toISOString().slice(0, 10));
+  const [to, setTo] = useState(localDateIso());
 
   const validRange = from <= to;
   const rows = useMemo(

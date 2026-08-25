@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedCartoesRouteImport } from './routes/_authenticated/cartoes'
+import { Route as AuthenticatedCategoriasRouteImport } from './routes/_authenticated/categorias'
 import { Route as AuthenticatedContasRouteImport } from './routes/_authenticated/contas'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedDocumentosRouteImport } from './routes/_authenticated/documentos'
@@ -22,6 +23,7 @@ import { Route as AuthenticatedLancamentosRouteImport } from './routes/_authenti
 import { Route as AuthenticatedOrcamentoRouteImport } from './routes/_authenticated/orcamento'
 import { Route as AuthenticatedPendenciasRouteImport } from './routes/_authenticated/pendencias'
 import { Route as AuthenticatedProjecaoRouteImport } from './routes/_authenticated/projecao'
+import { Route as AuthenticatedRecorrenciasRouteImport } from './routes/_authenticated/recorrencias'
 import { Route as AuthenticatedRelatoriosRouteImport } from './routes/_authenticated/relatorios'
 import { Route as AuthenticatedReservasRouteImport } from './routes/_authenticated/reservas'
 import { Route as AuthenticatedWhatsappRouteImport } from './routes/_authenticated/whatsapp'
@@ -44,6 +46,11 @@ const AuthRoute = AuthRouteImport.update({
 const AuthenticatedCartoesRoute = AuthenticatedCartoesRouteImport.update({
   id: '/cartoes',
   path: '/cartoes',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedCategoriasRoute = AuthenticatedCategoriasRouteImport.update({
+  id: '/categorias',
+  path: '/categorias',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedContasRoute = AuthenticatedContasRouteImport.update({
@@ -92,6 +99,12 @@ const AuthenticatedProjecaoRoute = AuthenticatedProjecaoRouteImport.update({
   path: '/projecao',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedRecorrenciasRoute =
+  AuthenticatedRecorrenciasRouteImport.update({
+    id: '/recorrencias',
+    path: '/recorrencias',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedRelatoriosRoute = AuthenticatedRelatoriosRouteImport.update({
   id: '/relatorios',
   path: '/relatorios',
@@ -117,6 +130,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/cartoes': typeof AuthenticatedCartoesRoute
+  '/categorias': typeof AuthenticatedCategoriasRoute
   '/contas': typeof AuthenticatedContasRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/documentos': typeof AuthenticatedDocumentosRoute
@@ -126,6 +140,7 @@ export interface FileRoutesByFullPath {
   '/orcamento': typeof AuthenticatedOrcamentoRoute
   '/pendencias': typeof AuthenticatedPendenciasRoute
   '/projecao': typeof AuthenticatedProjecaoRoute
+  '/recorrencias': typeof AuthenticatedRecorrenciasRoute
   '/relatorios': typeof AuthenticatedRelatoriosRoute
   '/reservas': typeof AuthenticatedReservasRoute
   '/whatsapp': typeof AuthenticatedWhatsappRoute
@@ -135,6 +150,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/cartoes': typeof AuthenticatedCartoesRoute
+  '/categorias': typeof AuthenticatedCategoriasRoute
   '/contas': typeof AuthenticatedContasRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/documentos': typeof AuthenticatedDocumentosRoute
@@ -144,6 +160,7 @@ export interface FileRoutesByTo {
   '/orcamento': typeof AuthenticatedOrcamentoRoute
   '/pendencias': typeof AuthenticatedPendenciasRoute
   '/projecao': typeof AuthenticatedProjecaoRoute
+  '/recorrencias': typeof AuthenticatedRecorrenciasRoute
   '/relatorios': typeof AuthenticatedRelatoriosRoute
   '/reservas': typeof AuthenticatedReservasRoute
   '/whatsapp': typeof AuthenticatedWhatsappRoute
@@ -155,6 +172,7 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
   '/_authenticated/cartoes': typeof AuthenticatedCartoesRoute
+  '/_authenticated/categorias': typeof AuthenticatedCategoriasRoute
   '/_authenticated/contas': typeof AuthenticatedContasRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/documentos': typeof AuthenticatedDocumentosRoute
@@ -164,6 +182,7 @@ export interface FileRoutesById {
   '/_authenticated/orcamento': typeof AuthenticatedOrcamentoRoute
   '/_authenticated/pendencias': typeof AuthenticatedPendenciasRoute
   '/_authenticated/projecao': typeof AuthenticatedProjecaoRoute
+  '/_authenticated/recorrencias': typeof AuthenticatedRecorrenciasRoute
   '/_authenticated/relatorios': typeof AuthenticatedRelatoriosRoute
   '/_authenticated/reservas': typeof AuthenticatedReservasRoute
   '/_authenticated/whatsapp': typeof AuthenticatedWhatsappRoute
@@ -175,6 +194,7 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/cartoes'
+    | '/categorias'
     | '/contas'
     | '/dashboard'
     | '/documentos'
@@ -184,6 +204,7 @@ export interface FileRouteTypes {
     | '/orcamento'
     | '/pendencias'
     | '/projecao'
+    | '/recorrencias'
     | '/relatorios'
     | '/reservas'
     | '/whatsapp'
@@ -193,6 +214,7 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/cartoes'
+    | '/categorias'
     | '/contas'
     | '/dashboard'
     | '/documentos'
@@ -202,6 +224,7 @@ export interface FileRouteTypes {
     | '/orcamento'
     | '/pendencias'
     | '/projecao'
+    | '/recorrencias'
     | '/relatorios'
     | '/reservas'
     | '/whatsapp'
@@ -212,6 +235,7 @@ export interface FileRouteTypes {
     | '/_authenticated'
     | '/auth'
     | '/_authenticated/cartoes'
+    | '/_authenticated/categorias'
     | '/_authenticated/contas'
     | '/_authenticated/dashboard'
     | '/_authenticated/documentos'
@@ -221,6 +245,7 @@ export interface FileRouteTypes {
     | '/_authenticated/orcamento'
     | '/_authenticated/pendencias'
     | '/_authenticated/projecao'
+    | '/_authenticated/recorrencias'
     | '/_authenticated/relatorios'
     | '/_authenticated/reservas'
     | '/_authenticated/whatsapp'
@@ -262,6 +287,13 @@ declare module '@tanstack/react-router' {
       path: '/cartoes'
       fullPath: '/cartoes'
       preLoaderRoute: typeof AuthenticatedCartoesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/categorias': {
+      id: '/_authenticated/categorias'
+      path: '/categorias'
+      fullPath: '/categorias'
+      preLoaderRoute: typeof AuthenticatedCategoriasRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/contas': {
@@ -327,6 +359,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedProjecaoRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/recorrencias': {
+      id: '/_authenticated/recorrencias'
+      path: '/recorrencias'
+      fullPath: '/recorrencias'
+      preLoaderRoute: typeof AuthenticatedRecorrenciasRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/relatorios': {
       id: '/_authenticated/relatorios'
       path: '/relatorios'
@@ -360,6 +399,7 @@ declare module '@tanstack/react-router' {
 
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedCartoesRoute: typeof AuthenticatedCartoesRoute
+  AuthenticatedCategoriasRoute: typeof AuthenticatedCategoriasRoute
   AuthenticatedContasRoute: typeof AuthenticatedContasRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedDocumentosRoute: typeof AuthenticatedDocumentosRoute
@@ -369,6 +409,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedOrcamentoRoute: typeof AuthenticatedOrcamentoRoute
   AuthenticatedPendenciasRoute: typeof AuthenticatedPendenciasRoute
   AuthenticatedProjecaoRoute: typeof AuthenticatedProjecaoRoute
+  AuthenticatedRecorrenciasRoute: typeof AuthenticatedRecorrenciasRoute
   AuthenticatedRelatoriosRoute: typeof AuthenticatedRelatoriosRoute
   AuthenticatedReservasRoute: typeof AuthenticatedReservasRoute
   AuthenticatedWhatsappRoute: typeof AuthenticatedWhatsappRoute
@@ -376,6 +417,7 @@ interface AuthenticatedRouteRouteChildren {
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedCartoesRoute: AuthenticatedCartoesRoute,
+  AuthenticatedCategoriasRoute: AuthenticatedCategoriasRoute,
   AuthenticatedContasRoute: AuthenticatedContasRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedDocumentosRoute: AuthenticatedDocumentosRoute,
@@ -385,6 +427,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedOrcamentoRoute: AuthenticatedOrcamentoRoute,
   AuthenticatedPendenciasRoute: AuthenticatedPendenciasRoute,
   AuthenticatedProjecaoRoute: AuthenticatedProjecaoRoute,
+  AuthenticatedRecorrenciasRoute: AuthenticatedRecorrenciasRoute,
   AuthenticatedRelatoriosRoute: AuthenticatedRelatoriosRoute,
   AuthenticatedReservasRoute: AuthenticatedReservasRoute,
   AuthenticatedWhatsappRoute: AuthenticatedWhatsappRoute,

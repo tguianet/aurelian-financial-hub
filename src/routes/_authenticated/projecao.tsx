@@ -38,6 +38,10 @@ function Projecao() {
       />
       <DemoNotice />
 
+      <div className="mb-4 rounded-lg border border-border bg-surface/60 px-4 py-3 text-xs text-muted-foreground">
+        Parcelas de cartão pendentes e ocorrências de recorrência ainda não geradas entram como movimento de caixa na data prevista. Ocorrências já materializadas entram só pelo lançamento — a definição não é somada de novo.
+      </div>
+
       <div className="panel p-5">
         <div className="h-72">
           <ResponsiveContainer width="100%" height="100%">

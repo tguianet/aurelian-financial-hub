@@ -1,7 +1,20 @@
 import "./lib/error-capture";
 
+import { createClient } from "@supabase/supabase-js";
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
+import { resolveCategoryId } from "./lib/categories";
+import { parseLooseDate } from "./lib/date";
+import { parseBRLMoney, roundMoney } from "./lib/money";
+import {
+  ALLOWED_DOCUMENT_MIME,
+  DOCUMENT_INTERPRETATION_VERSION,
+  MAX_DOCUMENT_BYTES,
+  documentAiJsonSchema,
+  resolveDocumentSuggestion,
+  type ResolvedDocumentSuggestion,
+} from "./lib/document-interpretation";
+import type { Database, Json } from "./integrations/supabase/types";
 
 type ServerEntry = {
   fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;
@@ -17,13 +30,11 @@ type FinanceInterpretBody = FinanceContext & {
   text?: string;
 };
 
-type DocumentInterpretBody = FinanceContext & {
+type DocumentInterpretBody = {
+  document_id?: string;
   text?: string;
-  documents?: Array<{
-    name: string;
-    mime_type?: string;
-    signed_url: string;
-  }>;
+  force?: boolean;
+  selected_entity_id?: string | null;
 };
 
 let serverEntryPromise: Promise<ServerEntry> | undefined;
@@ -81,6 +92,16 @@ async function verifySupabaseUser(request: Request, env: unknown) {
   return response.ok;
 }
 
+function userSupabase(request: Request, env: unknown) {
+  const auth = request.headers.get("authorization") ?? "";
+  const { supabaseUrl, publishableKey } = getSupabaseConfig(env);
+  if (!supabaseUrl || !publishableKey || !auth.startsWith("Bearer ")) return null;
+  return createClient<Database>(supabaseUrl, publishableKey, {
+    global: { headers: { Authorization: auth } },
+    auth: { persistSession: false, autoRefreshToken: false, storage: undefined },
+  });
+}
+
 function extractResponseText(payload: any): string | null {
   if (typeof payload?.output_text === "string" && payload.output_text) return payload.output_text;
   for (const item of payload?.output ?? []) {
@@ -122,7 +143,9 @@ function financeSchema() {
 
 function normalizeInterpretation(raw: any): { ok: true; value: any } | { ok: false } {
   if (!raw || typeof raw !== "object") return { ok: false };
-  const amount = Number(raw.amount);
+  const parsedAmount =
+    typeof raw.amount === "string" ? parseBRLMoney(raw.amount) : Number(raw.amount);
+  const amount = parsedAmount === null ? NaN : roundMoney(Number(parsedAmount));
   if (!Number.isFinite(amount) || amount <= 0) return { ok: false };
   let confidence = Number(raw.confidence);
   if (!Number.isFinite(confidence)) confidence = 0.5;
@@ -131,7 +154,13 @@ function normalizeInterpretation(raw: any): { ok: true; value: any } | { ok: fal
   const description = typeof raw.description === "string" && raw.description.trim()
     ? raw.description.trim().slice(0, 120)
     : "Lançamento importado de documento";
-  return { ok: true, value: { ...raw, kind, amount, confidence, description } };
+  const documentDate = parseLooseDate(
+    typeof raw.document_date === "string" ? raw.document_date : null,
+  );
+  return {
+    ok: true,
+    value: { ...raw, kind, amount, confidence, description, document_date: documentDate },
+  };
 }
 
 
@@ -140,6 +169,35 @@ function financeContext(body: FinanceContext) {
     entities: (body.entities ?? []).slice(0, 30),
     categories: (body.categories ?? []).slice(0, 80),
     accounts: (body.accounts ?? []).slice(0, 80),
+  };
+}
+
+function sanitizeInterpretation(raw: any, context: FinanceContext) {
+  const normalized = normalizeInterpretation(raw);
+  if (!normalized.ok) return normalized;
+  const kind = normalized.value.kind as "income" | "expense";
+  const allowed = (context.categories ?? []).map((category) => ({
+    id: category.id,
+    name: category.name,
+    kind: category.kind as "income" | "expense",
+    active: true,
+  }));
+  const categoryId = resolveCategoryId(
+    allowed,
+    kind,
+    typeof normalized.value.category_id === "string" ? normalized.value.category_id : null,
+    `${normalized.value.description ?? ""} ${normalized.value.vendor ?? ""}`,
+  );
+  const entityIds = new Set((context.entities ?? []).map((entity) => entity.id));
+  const accountIds = new Set((context.accounts ?? []).map((account) => account.id));
+  return {
+    ok: true as const,
+    value: {
+      ...normalized.value,
+      category_id: categoryId,
+      entity_id: entityIds.has(normalized.value.entity_id) ? normalized.value.entity_id : null,
+      account_id: accountIds.has(normalized.value.account_id) ? normalized.value.account_id : null,
+    },
   };
 }
 
@@ -201,7 +259,10 @@ async function handleFinanceInterpret(request: Request, env: unknown): Promise<R
   if (!output) return json({ error: "ai_empty_response" }, 502);
 
   try {
-    return json({ source: "openai", interpretation: JSON.parse(output) });
+    const parsed = JSON.parse(output);
+    const sanitized = sanitizeInterpretation(parsed, context);
+    if (!sanitized.ok) return json({ error: "ai_invalid_response" }, 502);
+    return json({ source: "openai", interpretation: sanitized.value });
   } catch {
     return json({ error: "ai_invalid_response" }, 502);
   }
@@ -213,6 +274,9 @@ async function handleDocumentInterpret(request: Request, env: unknown): Promise<
     return json({ error_code: "unauthorized", message: "Sessão expirada. Entre novamente." }, 401);
   }
 
+  const supabase = userSupabase(request, env);
+  if (!supabase) return json({ error_code: "backend_not_configured", message: "Backend não configurado." }, 503);
+
   let body: DocumentInterpretBody;
   try {
     body = (await request.json()) as DocumentInterpretBody;
@@ -220,103 +284,207 @@ async function handleDocumentInterpret(request: Request, env: unknown): Promise<
     return json({ error_code: "invalid_json", message: "Requisição inválida." }, 400);
   }
 
-  const documents = (body.documents ?? []).slice(0, 3);
-  if (!documents.length) return json({ error_code: "no_documents", message: "Nenhum documento anexado." }, 400);
-
-  const { supabaseUrl } = getSupabaseConfig(env);
-  if (!supabaseUrl) return json({ error_code: "backend_not_configured", message: "Backend não configurado." }, 503);
-  const allowedOrigin = new URL(supabaseUrl).origin;
-  for (const document of documents) {
-    try {
-      if (new URL(document.signed_url).origin !== allowedOrigin) {
-        return json({ error_code: "invalid_document_url", message: "Link do documento inválido." }, 400);
-      }
-    } catch {
-      return json({ error_code: "invalid_document_url", message: "Link do documento inválido." }, 400);
-    }
+  const documentId = typeof body.document_id === "string" ? body.document_id : "";
+  if (!documentId) {
+    return json({ error_code: "document_required", message: "Informe o documento a interpretar." }, 400);
   }
 
+  const claimed = await supabase.rpc("claim_financial_document_processing", {
+    p_id: documentId,
+    p_force: Boolean(body.force),
+  });
+  if (claimed.error) {
+    const message = claimed.error.message ?? "";
+    if (/somente leitura|sem permissao/i.test(message)) {
+      return json({ error_code: "forbidden", message: "Seu acesso é somente leitura." }, 403);
+    }
+    if (/invalido|nao encontrado|vinculado|arquivado/i.test(message)) {
+      return json({ error_code: "document_invalid", message: "Documento inválido para este espaço." }, 404);
+    }
+    return json({ error_code: "claim_failed", message: "Não consegui iniciar a leitura do documento." }, 400);
+  }
+
+  const claim = claimed.data?.[0];
+  if (!claim) return json({ error_code: "document_invalid", message: "Documento inválido para este espaço." }, 404);
+
+  if (!claim.claimed && claim.already_interpreted && claim.interpretation_json) {
+    return json({
+      source: "cached",
+      interpretation_version: DOCUMENT_INTERPRETATION_VERSION,
+      interpretation: claim.interpretation_json,
+    });
+  }
+
+  if (!claim.claimed) {
+    return json({
+      error_code: "processing_in_progress",
+      message: "Este documento já está sendo lido. Aguarde ou tente de novo em instantes.",
+    }, 409);
+  }
+
+  const mime = (claim.mime_type || "application/octet-stream").toLowerCase();
+  if (!(ALLOWED_DOCUMENT_MIME as readonly string[]).includes(mime)) {
+    await supabase.rpc("fail_financial_document_interpretation", {
+      p_id: documentId,
+      p_error: "tipo de arquivo nao permitido",
+    });
+    return json({ error_code: "mime_not_allowed", message: "Este tipo de arquivo não pode ser lido." }, 415);
+  }
+  if (claim.size_bytes != null && Number(claim.size_bytes) > MAX_DOCUMENT_BYTES) {
+    await supabase.rpc("fail_financial_document_interpretation", {
+      p_id: documentId,
+      p_error: "arquivo maior que 20 MB",
+    });
+    return json({ error_code: "file_too_large", message: "Arquivo maior que 20 MB." }, 413);
+  }
+
+  const signed = await supabase.storage.from("financial-documents").createSignedUrl(claim.storage_path, 120);
+  if (signed.error || !signed.data?.signedUrl) {
+    await supabase.rpc("fail_financial_document_interpretation", {
+      p_id: documentId,
+      p_error: "nao foi possivel assinar o arquivo",
+    });
+    return json({ error_code: "signed_url_failed", message: "Não consegui preparar o arquivo para leitura." }, 502);
+  }
+
+  const [entities, categories, accounts] = await Promise.all([
+    supabase.from("financial_entities").select("id, name, active").eq("is_demo", false),
+    supabase.from("categories").select("id, name, kind, active").eq("is_demo", false),
+    supabase.from("accounts").select("id, entity_id, active").eq("is_demo", false),
+  ]);
+
   const apiKey = envValue(env, "OPENAI_API_KEY");
-  if (!apiKey) return json({ error_code: "ai_not_configured", message: "IA não configurada neste ambiente." }, 503);
+  if (!apiKey) {
+    await supabase.rpc("fail_financial_document_interpretation", {
+      p_id: documentId,
+      p_error: "ia nao configurada",
+    });
+    return json({ error_code: "ai_not_configured", message: "IA não configurada neste ambiente." }, 503);
+  }
   const model = envValue(env, "OPENAI_MODEL") || "gpt-5.6-luna";
-  const context = financeContext(body);
+  const nameContext = {
+    entities: (entities.data ?? []).map((row) => ({ name: row.name })),
+    categories: (categories.data ?? []).map((row) => ({ name: row.name, kind: row.kind })),
+  };
+
+  const fail = async (code: string, message: string, status = 502, errorText = message) => {
+    await supabase.rpc("fail_financial_document_interpretation", {
+      p_id: documentId,
+      p_error: errorText.slice(0, 300),
+    });
+    return json({ error_code: code, message }, status);
+  };
 
   try {
-    const content: Array<Record<string, unknown>> = [];
-    content.push({
-      type: "input_text",
-      text:
-        `Leia os documentos anexados como comprovantes financeiros. Contexto opcional do usuario: ${body.text?.trim() || "(sem texto)"}. ` +
-        `Identifique o valor principal/total do documento, se e valor a receber (income) ou a pagar/gasto (expense), fornecedor/pagador, data e descricao. ` +
-        `Use SOMENTE IDs das opcoes fornecidas. Se o texto do usuario disser que e para receber, priorize income. Opcoes: ${JSON.stringify(context)}`,
-    });
-
-    for (const document of documents) {
-      const isImage = (document.mime_type || "").startsWith("image/");
-      if (isImage) {
-        content.push({ type: "input_image", image_url: document.signed_url, detail: "high" });
-      } else {
-        // 'filename' is mutually exclusive with file_url/file_id on the Responses API.
-        content.push({ type: "input_file", file_url: document.signed_url });
-      }
-    }
-
+    const isImage = mime.startsWith("image/");
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 45_000);
     const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
+      signal: controller.signal,
       body: JSON.stringify({
         model,
         input: [
           {
             role: "system",
             content:
-              "Voce e um extrator financeiro preciso. Leia notas fiscais, recibos, boletos, PDFs, planilhas e documentos financeiros. Nao invente valores nem IDs. Use o valor total principal do documento, nao CNPJ, chave, numero da nota ou codigo de barras. Para comissao ou nota emitida para receber, use income. Para compra, conta, conserto ou despesa, use expense. document_date em YYYY-MM-DD quando identificavel. Confidence de 0 a 1.",
+              "Voce extrai lancamentos financeiros de documentos em portugues do Brasil. Nunca invente valores. Nunca retorne UUIDs ou IDs internos. Use nomes. kind=income para receber e expense para pagar/gasto. Datas em YYYY-MM-DD. payment_method em pix,cash,debit,credit,boleto,transfer,other. possible_recurring so se parecer mensalidade/assinatura. Confidence 0 a 1.",
           },
-          { role: "user", content },
+          {
+            role: "user",
+            content: [
+              {
+                type: "input_text",
+                text:
+                  `Leia o comprovante. Contexto opcional: ${body.text?.trim()?.slice(0, 400) || "(sem texto)"}. ` +
+                  `Nomes disponiveis do espaco (nao sao IDs): ${JSON.stringify(nameContext)}`,
+              },
+              isImage
+                ? { type: "input_image", image_url: signed.data.signedUrl, detail: "high" }
+                : { type: "input_file", file_url: signed.data.signedUrl },
+            ],
+          },
         ],
-        text: { format: { type: "json_schema", name: "financial_document_interpretation", strict: true, schema: financeSchema() } },
-        max_output_tokens: 320,
+        text: {
+          format: {
+            type: "json_schema",
+            name: "financial_document_interpretation",
+            strict: true,
+            schema: documentAiJsonSchema(),
+          },
+        },
+        max_output_tokens: 360,
       }),
     });
+    clearTimeout(timer);
 
     if (!response.ok) {
       const detail = await response.text();
       console.error(`[OpenAI document interpret] ${response.status}: ${detail.slice(0, 800)}`);
-      let apiMessage = "";
-      try {
-        apiMessage = String((JSON.parse(detail) as any)?.error?.message ?? "").slice(0, 200);
-      } catch {
-        apiMessage = "";
-      }
-      return json(
-        {
-          error_code: `openai_http_${response.status}`,
-          message: apiMessage || `A leitura do documento falhou (HTTP ${response.status}).`,
-        },
-        502,
-      );
+      return await fail("ai_unavailable", "A leitura do documento falhou. Tente novamente.", 502, `openai_http_${response.status}`);
     }
 
     const payload = await response.json();
     const output = extractResponseText(payload);
-    if (!output) return json({ error_code: "ai_empty_response", message: "A IA não retornou conteúdo para o documento." }, 502);
+    if (!output) return await fail("ai_empty_response", "A IA não retornou conteúdo para o documento.");
 
     let parsed: unknown;
     try {
       parsed = JSON.parse(output);
     } catch {
-      return json({ error_code: "ai_invalid_response", message: "A IA retornou um formato inesperado." }, 502);
+      return await fail("ai_invalid_response", "A IA retornou um formato inesperado.");
     }
 
-    const normalized = normalizeInterpretation(parsed);
-    if (!normalized.ok) {
-      return json({ error_code: "ai_invalid_amount", message: "Não identifiquei um valor válido no documento." }, 422);
+    let resolved: ResolvedDocumentSuggestion;
+    try {
+      resolved = resolveDocumentSuggestion(parsed, {
+        entities: (entities.data ?? []).map((row) => ({
+          id: row.id,
+          name: row.name,
+          active: row.active !== false,
+        })),
+        categories: (categories.data ?? [])
+          .filter((row) => row.kind === "income" || row.kind === "expense")
+          .map((row) => ({
+            id: row.id,
+            name: row.name,
+            kind: row.kind as "income" | "expense",
+            active: row.active !== false,
+          })),
+        accounts: (accounts.data ?? []).map((row) => ({
+          id: row.id,
+          entity_id: row.entity_id,
+          active: row.active !== false,
+        })),
+        preferredEntityId: typeof body.selected_entity_id === "string" ? body.selected_entity_id : null,
+      });
+    } catch {
+      return await fail("ai_invalid_amount", "Não identifiquei um valor ou data válida no documento.", 422);
     }
 
-    return json({ source: "openai_document", interpretation: normalized.value });
+    const saved = await supabase.rpc("save_financial_document_interpretation", {
+      p_id: documentId,
+      p_json: resolved as unknown as Json,
+      p_model: model,
+      p_possible_recurring: resolved.possible_recurring,
+    });
+    if (saved.error) {
+      return await fail("save_failed", "Li o documento, mas não consegui gravar a sugestão.");
+    }
+
+    return json({
+      source: "openai_document",
+      interpretation_version: DOCUMENT_INTERPRETATION_VERSION,
+      interpretation: resolved,
+    });
   } catch (error) {
+    const aborted = error instanceof Error && error.name === "AbortError";
     console.error("[Document interpret]", error);
-    return json({ error_code: "document_processing_failed", message: "Não consegui processar o documento agora." }, 502);
+    return await fail(
+      aborted ? "ai_timeout" : "document_processing_failed",
+      aborted ? "A leitura demorou demais. O documento continua recuperável." : "Não consegui processar o documento agora.",
+    );
   }
 }
 

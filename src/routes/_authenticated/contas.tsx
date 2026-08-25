@@ -4,11 +4,14 @@ import { Plus, Power } from "lucide-react";
 import { toast } from "sonner";
 import { createFileRouteHead } from "@/lib/head";
 import { supabase } from "@/integrations/supabase/client";
+import { rpcErrorMessage } from "@/lib/rpc-error";
 import { useAuthUser } from "@/hooks/useAuthUser";
+import { useFinanceAccess } from "@/hooks/useFinanceAccess";
 import { useRefreshFinance } from "@/hooks/useFinance";
 import { useEntityScope } from "@/components/finance/EntityContext";
 import { PageHeader } from "@/components/finance/PageHeader";
 import { accountBalances, brl, buildScope } from "@/lib/finance";
+import { parseBRLMoney } from "@/lib/money";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -41,13 +44,13 @@ const TYPE_LABEL: Record<string, string> = {
 };
 
 function parseMoney(value: string) {
-  const normalized = value.replace(/\s/g, "").replace(/\./g, "").replace(",", ".");
-  return Number(normalized);
+  return parseBRLMoney(value);
 }
 
 function Contas() {
   const { data, entityId, entityName } = useEntityScope();
   const { user } = useAuthUser();
+  const { canWrite } = useFinanceAccess();
   const refresh = useRefreshFinance();
   const scope = buildScope(data, entityId);
   const balances = accountBalances(data);
@@ -64,43 +67,27 @@ function Contas() {
 
   const createAccount = async () => {
     if (!user) { toast.error("Sessão expirada."); return; }
+    if (!canWrite) { toast.error("Seu acesso é somente leitura."); return; }
     if (!ownerEntityId) { toast.error("Selecione a entidade financeira."); return; }
     const cleanName = name.trim();
     if (!cleanName) { toast.error("Informe o nome da conta."); return; }
     const balance = parseMoney(openingBalance);
-    if (!Number.isFinite(balance)) { toast.error("Informe um saldo inicial válido."); return; }
+    if (balance === null) { toast.error("Informe um saldo inicial válido."); return; }
 
     setBusy(true);
-    const { data: created, error } = await supabase
-      .from("accounts")
-      .insert({
-        user_id: user.id,
-        is_demo: false,
-        entity_id: ownerEntityId,
-        name: cleanName,
-        type,
-        bank: bank.trim() || null,
-        opening_balance: balance,
-        active: true,
-      })
-      .select("id")
-      .single();
-
-    if (error || !created) {
-      setBusy(false);
-      toast.error(error?.message ?? "Não foi possível criar a conta.");
+    const { error } = await supabase.rpc("create_account", {
+      p_entity_id: ownerEntityId,
+      p_name: cleanName,
+      p_type: type,
+      p_bank: bank.trim(),
+      p_opening_balance: balance,
+    });
+    setBusy(false);
+    if (error) {
+      toast.error(rpcErrorMessage(error, "Não foi possível criar a conta."));
       return;
     }
 
-    await supabase.from("audit_log").insert({
-      user_id: user.id,
-      table_name: "accounts",
-      record_id: created.id,
-      action: "insert",
-      details: { name: cleanName, entity_id: ownerEntityId, opening_balance: balance },
-    });
-
-    setBusy(false);
     setName("");
     setBank("");
     setOpeningBalance("0,00");
@@ -109,25 +96,10 @@ function Contas() {
     refresh();
   };
 
-  const toggleActive = async (id: string, current: boolean, accountName: string) => {
-    if (!user) { toast.error("Sessão expirada."); return; }
-    const { error } = await supabase
-      .from("accounts")
-      .update({ active: !current })
-      .eq("id", id)
-      .eq("user_id", user.id)
-      .eq("is_demo", false);
-
-    if (error) { toast.error(error.message); return; }
-
-    await supabase.from("audit_log").insert({
-      user_id: user.id,
-      table_name: "accounts",
-      record_id: id,
-      action: current ? "deactivate" : "activate",
-      details: { name: accountName },
-    });
-
+  const toggleActive = async (id: string, current: boolean) => {
+    if (!canWrite) { toast.error("Seu acesso é somente leitura."); return; }
+    const { error } = await supabase.rpc("toggle_account_active", { p_id: id });
+    if (error) { toast.error(rpcErrorMessage(error, "Não foi possível atualizar a conta.")); return; }
     toast.success(current ? "Conta desativada sem apagar o histórico." : "Conta reativada.");
     refresh();
   };
@@ -138,6 +110,7 @@ function Contas() {
         title="Contas bancárias e carteiras"
         subtitle={`${entityName} · saldo somado ${brl(total)}`}
         action={
+          canWrite ? (
           <Dialog open={open} onOpenChange={(next) => {
             setOpen(next);
             if (next && entityId !== "all") setOwnerEntityId(entityId);
@@ -196,6 +169,7 @@ function Contas() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+          ) : undefined
         }
       />
 
@@ -213,14 +187,18 @@ function Contas() {
                     {a.bank ? ` · ${a.bank}` : ""}
                   </p>
                 </div>
+                {canWrite ? (
                 <Button
                   variant="ghost"
                   size="sm"
                   className="h-7 gap-1 px-2 text-[11px]"
-                  onClick={() => toggleActive(a.id, a.active, a.name)}
+                  onClick={() => toggleActive(a.id, a.active)}
                 >
                   <Power className="size-3" /> {a.active ? "Ativa" : "Inativa"}
                 </Button>
+                ) : (
+                  <span className="text-[11px] text-muted-foreground">{a.active ? "Ativa" : "Inativa"}</span>
+                )}
               </div>
               <p className={`num mt-4 text-2xl font-semibold ${balance >= 0 ? "text-foreground" : "text-destructive"}`}>
                 {brl(balance)}

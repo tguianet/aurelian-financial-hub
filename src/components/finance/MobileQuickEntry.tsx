@@ -3,12 +3,23 @@ import { Check, Mic, MicOff, RotateCcw, Send, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuthUser } from "@/hooks/useAuthUser";
+import { useFinanceAccess } from "@/hooks/useFinanceAccess";
 import { useRefreshFinance } from "@/hooks/useFinance";
 import { useEntityScope } from "./EntityContext";
 import type { UploadedDocument } from "./QuickDocumentUpload";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { brl, type TxKind } from "@/lib/finance";
+import { resolveCategoryId, selectableCategories } from "@/lib/categories";
+import { isValidDateIso, localDateIso, parseLooseDate } from "@/lib/date";
+import { parseBRLMoney, roundMoney } from "@/lib/money";
+import { newIdempotencyKey } from "@/lib/idempotency";
+import { rpcErrorMessage } from "@/lib/rpc-error";
+import { DocumentReviewDialog } from "./DocumentReviewDialog";
+import {
+  requestDocumentInterpretation,
+  type ResolvedDocumentSuggestion,
+} from "@/lib/document-interpretation";
 
 type Draft = {
   kind: Exclude<TxKind, "transfer">;
@@ -52,14 +63,8 @@ const normalize = (value: string) =>
   value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
 function parseBrazilianNumber(rawValue: string) {
-  const raw = rawValue.replace(/[^\d.,]/g, "");
-  if (!raw) return null;
-  let clean: string;
-  if (raw.includes(",")) clean = raw.replace(/\./g, "").replace(",", ".");
-  else if (/^\d{1,3}(\.\d{3})+$/.test(raw)) clean = raw.replace(/\./g, "");
-  else clean = raw;
-  const value = Number(clean);
-  return Number.isFinite(value) && value > 0 ? value : null;
+  const value = parseBRLMoney(rawValue);
+  return value !== null && value > 0 ? value : null;
 }
 
 function parseInstallment(text: string) {
@@ -68,7 +73,12 @@ function parseInstallment(text: string) {
   const count = Number(match[1]);
   const installmentAmount = parseBrazilianNumber(match[2] ?? "");
   if (!Number.isInteger(count) || count < 2 || count > 60 || !installmentAmount) return null;
-  return { count, installmentAmount, totalAmount: Math.round(count * installmentAmount * 100) / 100, matchedText: match[0] };
+  return {
+    count,
+    installmentAmount,
+    totalAmount: roundMoney(count * installmentAmount),
+    matchedText: match[0],
+  };
 }
 
 function parseAmount(text: string) {
@@ -99,26 +109,19 @@ function removeEntityMention(text: string, entityName?: string) {
   return normalize(text).replaceAll(normalize(entityName), " ").replace(/\s+/g, " ").trim();
 }
 
-function monthlyIsoDate(baseIso: string, monthOffset: number) {
-  const [year = 1970, month = 1, day = 1] = baseIso.split("-").map(Number) as number[];
-  const monthIndex = month - 1 + monthOffset;
-  const targetYear = year + Math.floor(monthIndex / 12);
-  const targetMonthIndex = ((monthIndex % 12) + 12) % 12;
-  const lastDay = new Date(Date.UTC(targetYear, targetMonthIndex + 1, 0)).getUTCDate();
-  const targetDay = Math.min(day, lastDay);
-  return new Date(Date.UTC(targetYear, targetMonthIndex, targetDay)).toISOString().slice(0, 10);
-}
-
 export function MobileQuickEntry({ documents = [] }: Props) {
   const { data, entityId: selectedEntityId } = useEntityScope();
   const { user } = useAuthUser();
+  const { canWrite } = useFinanceAccess();
   const refresh = useRefreshFinance();
   const [text, setText] = useState("");
   const [draft, setDraft] = useState<Draft | null>(null);
   const [listening, setListening] = useState(false);
   const [saving, setSaving] = useState(false);
   const [interpreting, setInterpreting] = useState(false);
+  const [review, setReview] = useState<{ documentId: string; suggestion: ResolvedDocumentSuggestion } | null>(null);
   const recognitionRef = useRef<InstanceType<SpeechRecognitionCtor> | null>(null);
+  const idempotencyKeyRef = useRef<string | null>(null);
 
   const speechSupported = useMemo(
     () => typeof window !== "undefined" && Boolean(window.SpeechRecognition || window.webkitSpeechRecognition),
@@ -136,25 +139,30 @@ export function MobileQuickEntry({ documents = [] }: Props) {
     vendor?: string | null;
     confidence?: number;
   }, originalText: string): Draft | null => {
-    if (!ai?.kind || !ai.amount || ai.amount <= 0 || (ai.confidence ?? 0) < 0.5) return null;
+    if (!ai?.kind || !ai.amount || Number(ai.amount) <= 0 || (ai.confidence ?? 0) < 0.5) return null;
     const entity = data.entities.find((e) => e.id === ai.entity_id) ??
       (selectedEntityId !== "all" ? data.entities.find((e) => e.id === selectedEntityId) : undefined) ??
       data.entities.find((e) => e.slug === "pessoal") ?? data.entities[0];
     if (!entity) return null;
-    const category = data.categories.find((c) => c.id === ai.category_id && c.kind === ai.kind) ?? null;
+    const categoryId = resolveCategoryId(
+      data.categories,
+      ai.kind,
+      ai.category_id,
+      `${ai.description ?? ""} ${ai.vendor ?? ""} ${originalText}`,
+    );
     const account = data.accounts.find((a) => a.id === ai.account_id && a.entity_id === entity.id && a.active) ??
       data.accounts.find((a) => a.entity_id === entity.id && a.active) ?? data.accounts.find((a) => a.entity_id === entity.id);
     if (!account) return null;
     return {
       kind: ai.kind,
-      amount: Number(ai.amount),
+      amount: roundMoney(Number(ai.amount)),
       entityId: entity.id,
-      categoryId: category?.id ?? null,
+      categoryId,
       accountId: account.id,
       description: ai.description?.trim() || ai.vendor?.trim() || originalText || "Documento financeiro",
       originalText,
       parser: "openai",
-      documentDate: ai.document_date ?? null,
+      documentDate: parseLooseDate(typeof ai.document_date === "string" ? ai.document_date : null),
       vendor: ai.vendor ?? null,
       pending: inferPending(originalText, ai.kind),
     };
@@ -175,18 +183,9 @@ export function MobileQuickEntry({ documents = [] }: Props) {
     if (!account) return null;
 
     const categoryText = removeEntityMention(originalText, explicitEntity?.name);
-    const categories = data.categories.filter((c) => c.kind === kind);
-    const category = categories.find((c) => categoryText.includes(normalize(c.name))) ?? categories.find((c) => {
-      const cn = normalize(c.name);
-      if (cn.includes("veiculo") && /(moto|motocicleta|carro|veiculo|van|saveiro|caminhao)/.test(categoryText)) return true;
-      if (cn.includes("manutencao") && /(manutencao|conserto|reparo|oficina)/.test(categoryText)) return true;
-      if (cn.includes("combustivel") && /(gasolina|etanol|alcool|posto|combustivel)/.test(categoryText)) return true;
-      if (cn.includes("alimentacao") && /(comida|almoco|janta|mercado)/.test(categoryText)) return true;
-      if (cn.includes("energia") && /(conta de luz|energia eletrica|luz)/.test(categoryText)) return true;
-      if (cn.includes("comiss") && /(comissao|comparta|energia por assinatura)/.test(categoryText)) return true;
-      if (cn.includes("venda") && /(vendi|venda|faturei)/.test(categoryText)) return true;
-      return false;
-    }) ?? null;
+    const categories = selectableCategories(data.categories, kind);
+    const matchedId = resolveCategoryId(categories, kind, null, categoryText);
+    const category = categories.find((c) => c.id === matchedId) ?? null;
 
     let stripped = originalText;
     if (installment) stripped = stripped.replace(installment.matchedText, "");
@@ -213,7 +212,7 @@ export function MobileQuickEntry({ documents = [] }: Props) {
       body: JSON.stringify({
         text: originalText,
         entities: data.entities.map(({ id, name, slug }) => ({ id, name, slug })),
-        categories: data.categories.map(({ id, name, kind }) => ({ id, name, kind })),
+        categories: selectableCategories(data.categories).map(({ id, name, kind }) => ({ id, name, kind })),
         accounts: data.accounts.filter((a) => a.active).map(({ id, name, entity_id }) => ({ id, name, entity_id })),
       }),
     });
@@ -222,58 +221,48 @@ export function MobileQuickEntry({ documents = [] }: Props) {
     return payload.interpretation ? resolveAiDraft(payload.interpretation, originalText) : null;
   };
 
-  const documentInterpret = async (originalText: string): Promise<Draft | null> => {
+  const documentInterpret = async (originalText: string) => {
     const { data: sessionData } = await supabase.auth.getSession();
     const token = sessionData.session?.access_token;
-    if (!token || !documents.length) return null;
-
-    const signedDocuments = [];
-    for (const document of documents.slice(0, 3)) {
-      const { data: signed, error } = await supabase.storage.from("financial-documents").createSignedUrl(document.path, 300);
-      if (error || !signed?.signedUrl) throw new Error(`Não consegui preparar ${document.name} para leitura.`);
-      signedDocuments.push({ name: document.name, mime_type: document.mimeType, signed_url: signed.signedUrl });
+    const document = documents.find((item) => item.id);
+    if (!token || !document?.id) {
+      throw new Error("O documento precisa estar catalogado antes da leitura.");
     }
-
-    const response = await fetch("/api/finance/document-interpret", {
-      method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
-      body: JSON.stringify({
-        text: originalText,
-        documents: signedDocuments,
-        entities: data.entities.map(({ id, name, slug }) => ({ id, name, slug })),
-        categories: data.categories.map(({ id, name, kind }) => ({ id, name, kind })),
-        accounts: data.accounts.filter((a) => a.active).map(({ id, name, entity_id }) => ({ id, name, entity_id })),
-      }),
+    return requestDocumentInterpretation({
+      documentId: document.id,
+      token,
+      text: originalText,
+      selectedEntityId: selectedEntityId !== "all" ? selectedEntityId : null,
     });
-    if (!response.ok) {
-      const detail = await response.json().catch(() => ({})) as { message?: string; error_code?: string; error?: string };
-      const suffix = detail.error_code ? ` (${detail.error_code})` : "";
-      throw new Error(`${detail.message || detail.error || "Falha ao ler documento."}${suffix}`);
-    }
-    const payload = await response.json() as { interpretation?: Parameters<typeof resolveAiDraft>[0] };
-    return payload.interpretation ? resolveAiDraft(payload.interpretation, originalText) : null;
   };
 
   const interpret = async (value = text) => {
     const originalText = value.trim();
+    if (!canWrite) { toast.error("Seu acesso é somente leitura."); return; }
     if (!originalText && !documents.length) { toast.error("Digite, fale ou anexe um documento."); return; }
     if (!documents.length && !parseAmount(originalText)) { toast.error("Não encontrei o valor. Ex.: gastei 180 combustível."); return; }
 
     setInterpreting(true);
     if (documents.length) {
       try {
-        const docDraft = await documentInterpret(originalText);
+        const result = await documentInterpret(originalText);
+        const document = documents.find((item) => item.id);
         setInterpreting(false);
-        if (docDraft) {
-          setDraft(docDraft);
-          toast.success("Documento lido. Confira os dados antes de confirmar.");
+        if (!document?.id) {
+          toast.error("Documento sem metadata. Recatalogue em Documentos.");
           return;
         }
-        toast.error("Li o documento, mas não consegui identificar um lançamento com segurança.");
+        setReview({ documentId: document.id, suggestion: result.interpretation });
+        toast.success("Documento lido. Confira os dados antes de confirmar.");
         return;
       } catch (error) {
         setInterpreting(false);
-        toast.error(error instanceof Error ? error.message : "Não consegui ler o documento.");
+        const code = (error as Error & { code?: string }).code;
+        if (code === "processing_in_progress") {
+          toast.message("Este documento já está sendo lido. Aguarde e tente de novo.");
+        } else {
+          toast.error(error instanceof Error ? error.message : "Não consegui ler o documento.");
+        }
         return;
       }
     }
@@ -327,38 +316,48 @@ export function MobileQuickEntry({ documents = [] }: Props) {
 
   const confirm = async () => {
     if (!draft || !user) return;
+    if (!canWrite) { toast.error("Seu acesso é somente leitura."); return; }
+    if (saving) return;
+    if (!idempotencyKeyRef.current) idempotencyKeyRef.current = newIdempotencyKey();
     setSaving(true);
-    const today = new Date().toISOString().slice(0, 10);
-    const txDate = draft.documentDate && /^\d{4}-\d{2}-\d{2}$/.test(draft.documentDate) ? draft.documentDate : today;
+    const today = localDateIso();
+    const txDate = draft.documentDate && isValidDateIso(draft.documentDate) ? draft.documentDate : today;
     const source = draft.parser === "openai" ? (documents.length ? "document_openai" : "mobile_openai") : "mobile_quick_entry";
+    const installments = draft.installmentCount && draft.installmentCount > 1 ? draft.installmentCount : 1;
+    const isPending = Boolean(draft.pending);
 
-    if (draft.installmentCount && draft.installmentCount > 1) {
-      const rows = Array.from({ length: draft.installmentCount }, (_, index) => ({
-        user_id: user.id, entity_id: draft.entityId, kind: draft.kind, description: draft.description, amount: draft.amount,
-        category_id: draft.categoryId, account_id: draft.accountId, payment_method: "other",
-        competence_date: monthlyIsoDate(txDate, index), due_date: monthlyIsoDate(txDate, index), paid_at: null,
-        status: "pending", recurrence: "none", installment_no: index + 1, installment_total: draft.installmentCount ?? null,
-        source, notes: `Comando original: ${draft.originalText || "Documento anexado"}`,
-      }));
-      const { error } = await supabase.from("transactions").insert(rows);
+    const { data: txId, error } = await supabase.rpc("create_transaction", {
+      p_entity_id: draft.entityId,
+      p_account_id: draft.accountId,
+      p_kind: draft.kind,
+      p_description: draft.description,
+      p_amount: draft.amount,
+      p_category_id: draft.categoryId,
+      p_to_account_id: null,
+      p_payment_method: "other",
+      p_competence_date: txDate,
+      p_due_date: txDate,
+      p_status: isPending ? "pending" : "paid",
+      p_notes: `Comando original: ${draft.originalText || "Documento anexado"}${draft.vendor ? ` | Documento: ${draft.vendor}` : ""}`,
+      p_installments: installments,
+      p_amount_mode: installments > 1 ? "each" : "total",
+      p_shift_competence: installments > 1,
+      p_source: source,
+      p_idempotency_key: idempotencyKeyRef.current,
+    });
+    if (error || !txId) {
       setSaving(false);
-      if (error) { toast.error(error.message); return; }
-      toast.success(`${draft.installmentCount} parcelas criadas no contas a pagar.`);
-    } else {
-      const isPending = Boolean(draft.pending);
-      const { error } = await supabase.from("transactions").insert({
-        user_id: user.id, entity_id: draft.entityId, kind: draft.kind, description: draft.description, amount: draft.amount,
-        category_id: draft.categoryId, account_id: draft.accountId, payment_method: "other",
-        competence_date: txDate, due_date: txDate, paid_at: isPending ? null : txDate,
-        status: isPending ? "pending" : draft.kind === "income" ? "received" : "paid",
-        recurrence: "none", source,
-        notes: `Comando original: ${draft.originalText || "Documento anexado"}${draft.vendor ? ` | Documento: ${draft.vendor}` : ""}`,
-      });
-      setSaving(false);
-      if (error) { toast.error(error.message); return; }
-      toast.success(isPending ? (draft.kind === "income" ? "Conta a receber criada." : "Conta a pagar criada.") : "Lançamento confirmado.");
+      toast.error(rpcErrorMessage(error, "Não foi possível confirmar o lançamento."));
+      return;
     }
 
+    setSaving(false);
+    idempotencyKeyRef.current = null;
+    if (installments > 1) {
+      toast.success(`${installments} parcelas criadas no contas a pagar.`);
+    } else {
+      toast.success(isPending ? (draft.kind === "income" ? "Conta a receber criada." : "Conta a pagar criada.") : "Lançamento confirmado.");
+    }
     setDraft(null);
     setText("");
     refresh();
@@ -375,6 +374,21 @@ export function MobileQuickEntry({ documents = [] }: Props) {
         <h2 className="mt-1 text-lg font-semibold">Digite, fale ou anexe um documento</h2>
         <p className="mt-1 text-xs text-muted-foreground">Com anexo, a IA lê a nota/PDF e extrai os dados financeiros.</p>
       </div>
+
+      {review ? (
+        <DocumentReviewDialog
+          key={review.documentId}
+          open
+          documentId={review.documentId}
+          suggestion={review.suggestion}
+          onOpenChange={(open) => { if (!open) setReview(null); }}
+          onConfirmed={() => {
+            setReview(null);
+            setText("");
+            refresh();
+          }}
+        />
+      ) : null}
 
       <Textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} placeholder={documents.length ? "Opcional: ex. nota da Comparta para eu receber" : "Recebi 2.607 da Energia..."} className="resize-none bg-background/70 text-base" />
 
@@ -406,7 +420,7 @@ export function MobileQuickEntry({ documents = [] }: Props) {
           </div>
           <div className="mt-4 grid grid-cols-2 gap-2">
             <Button variant="ghost" className="gap-2" onClick={() => setDraft(null)}><RotateCcw className="size-4" /> Corrigir</Button>
-            <Button className="gap-2" disabled={saving} onClick={confirm}><Check className="size-4" /> {saving ? "Salvando..." : "Confirmar"}</Button>
+            <Button className="gap-2" disabled={saving || !canWrite} onClick={confirm}><Check className="size-4" /> {saving ? "Salvando..." : "Confirmar"}</Button>
           </div>
         </div>
       ) : null}

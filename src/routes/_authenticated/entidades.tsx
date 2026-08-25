@@ -4,7 +4,9 @@ import { Building2, Plus, Power } from "lucide-react";
 import { toast } from "sonner";
 import { createFileRouteHead } from "@/lib/head";
 import { supabase } from "@/integrations/supabase/client";
+import { rpcErrorMessage } from "@/lib/rpc-error";
 import { useAuthUser } from "@/hooks/useAuthUser";
+import { useFinanceAccess } from "@/hooks/useFinanceAccess";
 import { useRefreshFinance } from "@/hooks/useFinance";
 import { useEntityScope } from "@/components/finance/EntityContext";
 import { PageHeader } from "@/components/finance/PageHeader";
@@ -50,6 +52,7 @@ function slugify(value: string) {
 function Entidades() {
   const { data } = useEntityScope();
   const { user } = useAuthUser();
+  const { canWrite } = useFinanceAccess();
   const refresh = useRefreshFinance();
   const ref = today();
   const rows = entitySummaries(data, ref);
@@ -62,83 +65,35 @@ function Entidades() {
 
   const createEntity = async () => {
     if (!user) { toast.error("Sessão expirada."); return; }
+    if (!canWrite) { toast.error("Seu acesso é somente leitura."); return; }
     const cleanName = name.trim();
     if (!cleanName) { toast.error("Informe o nome da empresa ou entidade."); return; }
     const slug = slugify(cleanName);
     if (!slug) { toast.error("Nome inválido."); return; }
 
     setBusy(true);
-    const { data: entity, error } = await supabase
-      .from("financial_entities")
-      .insert({
-        user_id: user.id,
-        is_demo: false,
-        name: cleanName,
-        slug,
-        kind,
-        color,
-        active: true,
-      })
-      .select("id")
-      .single();
-
-    if (error || !entity) {
-      setBusy(false);
-      toast.error(error?.message ?? "Não foi possível criar a entidade.");
-      return;
-    }
-
-    const { error: accountError } = await supabase.from("accounts").insert({
-      user_id: user.id,
-      is_demo: false,
-      entity_id: entity.id,
-      name: "Conta principal",
-      type: "checking",
-      opening_balance: 0,
-      active: true,
+    const { error } = await supabase.rpc("create_financial_entity", {
+      p_name: cleanName,
+      p_kind: kind,
+      p_color: color,
+      p_slug: slug,
     });
-
-    if (accountError) {
-      await supabase.from("financial_entities").delete().eq("id", entity.id);
-      setBusy(false);
-      toast.error(accountError.message);
-      return;
-    }
-
-    await supabase.from("audit_log").insert({
-      user_id: user.id,
-      table_name: "financial_entities",
-      record_id: entity.id,
-      action: "insert",
-      details: { name: cleanName, kind },
-    });
-
     setBusy(false);
+    if (error) {
+      toast.error(rpcErrorMessage(error, "Não foi possível criar a entidade."));
+      return;
+    }
+
     setName("");
     setOpen(false);
     toast.success("Entidade financeira criada.");
     refresh();
   };
 
-  const toggleActive = async (id: string, current: boolean, entityName: string) => {
-    if (!user) { toast.error("Sessão expirada."); return; }
-    const { error } = await supabase
-      .from("financial_entities")
-      .update({ active: !current })
-      .eq("id", id)
-      .eq("user_id", user.id)
-      .eq("is_demo", false);
-
-    if (error) { toast.error(error.message); return; }
-
-    await supabase.from("audit_log").insert({
-      user_id: user.id,
-      table_name: "financial_entities",
-      record_id: id,
-      action: current ? "deactivate" : "activate",
-      details: { name: entityName },
-    });
-
+  const toggleActive = async (id: string, current: boolean) => {
+    if (!canWrite) { toast.error("Seu acesso é somente leitura."); return; }
+    const { error } = await supabase.rpc("toggle_financial_entity_active", { p_id: id });
+    if (error) { toast.error(rpcErrorMessage(error, "Não foi possível atualizar a entidade.")); return; }
     toast.success(current ? "Entidade desativada sem apagar o histórico." : "Entidade reativada.");
     refresh();
   };
@@ -149,6 +104,7 @@ function Entidades() {
         title="Empresas e entidades financeiras"
         subtitle={`Consolidado de ${monthLabel(ref)} · saldo total ${brl(total)}`}
         action={
+          canWrite ? (
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
               <Button className="gap-2"><Plus className="size-4" /> Nova entidade</Button>
@@ -197,6 +153,7 @@ function Entidades() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+          ) : undefined
         }
       />
 
@@ -242,14 +199,18 @@ function Entidades() {
                   </div>
                 </Td>
                 <Td className="text-right">
+                  {canWrite ? (
                   <Button
                     variant="ghost"
                     size="sm"
                     className="gap-2"
-                    onClick={() => toggleActive(r.entity.id, r.entity.active, r.entity.name)}
+                    onClick={() => toggleActive(r.entity.id, r.entity.active)}
                   >
                     <Power className="size-3.5" /> {r.entity.active ? "Ativa" : "Inativa"}
                   </Button>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">{r.entity.active ? "Ativa" : "Inativa"}</span>
+                  )}
                 </Td>
               </tr>
             ))}

@@ -4,7 +4,9 @@ import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { createFileRouteHead } from "@/lib/head";
 import { supabase } from "@/integrations/supabase/client";
+import { rpcErrorMessage } from "@/lib/rpc-error";
 import { useAuthUser } from "@/hooks/useAuthUser";
+import { useFinanceAccess } from "@/hooks/useFinanceAccess";
 import { useRefreshFinance } from "@/hooks/useFinance";
 import { useEntityScope } from "@/components/finance/EntityContext";
 import { PageHeader } from "@/components/finance/PageHeader";
@@ -17,6 +19,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { brl, buildScope, pct } from "@/lib/finance";
+import { parseBRLMoney } from "@/lib/money";
 
 export const Route = createFileRoute("/_authenticated/reservas")({
   head: () => createFileRouteHead(
@@ -27,12 +30,13 @@ export const Route = createFileRoute("/_authenticated/reservas")({
 });
 
 function parseMoney(value: string) {
-  return Number(value.replace(/\s/g, "").replace(/\./g, "").replace(",", "."));
+  return parseBRLMoney(value);
 }
 
 function Reservas() {
   const { data, entityId, entityName } = useEntityScope();
   const { user } = useAuthUser();
+  const { canWrite } = useFinanceAccess();
   const refresh = useRefreshFinance();
   const scope = buildScope(data, entityId);
   const rows = data.reserves.filter((r) => scope.matchesEntity(r.entity_id));
@@ -52,40 +56,27 @@ function Reservas() {
 
   const createReserve = async () => {
     if (!user) { toast.error("Sessão expirada."); return; }
+    if (!canWrite) { toast.error("Seu acesso é somente leitura."); return; }
     if (!ownerEntityId) { toast.error("Selecione a entidade."); return; }
     if (!name.trim()) { toast.error("Informe o nome da reserva."); return; }
     const goal = parseMoney(targetAmount || "0");
     const currentValue = parseMoney(currentAmount || "0");
-    if (!Number.isFinite(goal) || !Number.isFinite(currentValue) || goal < 0 || currentValue < 0) {
+    if (goal === null || currentValue === null || goal < 0 || currentValue < 0) {
       toast.error("Informe valores válidos.");
       return;
     }
 
     setBusy(true);
-    const { data: created, error } = await supabase
-      .from("reserves")
-      .insert({
-        user_id: user.id,
-        is_demo: false,
-        entity_id: ownerEntityId,
-        account_id: accountId || null,
-        name: name.trim(),
-        target_amount: goal,
-        current_amount: currentValue,
-        notes: notes.trim() || null,
-      })
-      .select("id")
-      .single();
-    setBusy(false);
-    if (error || !created) { toast.error(error?.message ?? "Não foi possível criar a reserva."); return; }
-
-    await supabase.from("audit_log").insert({
-      user_id: user.id,
-      table_name: "reserves",
-      record_id: created.id,
-      action: "insert",
-      details: { entity_id: ownerEntityId, name: name.trim(), target_amount: goal, current_amount: currentValue },
+    const { error } = await supabase.rpc("create_reserve", {
+      p_entity_id: ownerEntityId,
+      p_name: name.trim(),
+      p_target_amount: goal,
+      p_current_amount: currentValue,
+      p_account_id: accountId || null,
+      p_notes: notes.trim() || null,
     });
+    setBusy(false);
+    if (error) { toast.error(rpcErrorMessage(error, "Não foi possível criar a reserva.")); return; }
 
     setName(""); setAccountId(""); setTargetAmount(""); setCurrentAmount(""); setNotes(""); setOpen(false);
     toast.success("Reserva criada.");
@@ -93,21 +84,19 @@ function Reservas() {
   };
 
   const updateCurrent = async (id: string, value: string) => {
-    if (!user) return;
+    if (!canWrite) { toast.error("Seu acesso é somente leitura."); return; }
     const amount = parseMoney(value);
-    if (!Number.isFinite(amount) || amount < 0) { toast.error("Valor inválido."); return; }
-    const { error } = await supabase.from("reserves").update({ current_amount: amount }).eq("id", id).eq("user_id", user.id).eq("is_demo", false);
-    if (error) { toast.error(error.message); return; }
-    await supabase.from("audit_log").insert({ user_id: user.id, table_name: "reserves", record_id: id, action: "update", details: { current_amount: amount } });
+    if (amount === null || amount < 0) { toast.error("Valor inválido."); return; }
+    const { error } = await supabase.rpc("update_reserve_amount", { p_id: id, p_current_amount: amount });
+    if (error) { toast.error(rpcErrorMessage(error, "Não foi possível atualizar a reserva.")); return; }
     toast.success("Reserva atualizada.");
     refresh();
   };
 
   const removeReserve = async (id: string) => {
-    if (!user) return;
-    const { error } = await supabase.from("reserves").delete().eq("id", id).eq("user_id", user.id).eq("is_demo", false);
-    if (error) { toast.error(error.message); return; }
-    await supabase.from("audit_log").insert({ user_id: user.id, table_name: "reserves", record_id: id, action: "delete" });
+    if (!canWrite) { toast.error("Seu acesso é somente leitura."); return; }
+    const { error } = await supabase.rpc("delete_reserve", { p_id: id });
+    if (error) { toast.error(rpcErrorMessage(error, "Não foi possível remover a reserva.")); return; }
     toast.success("Reserva removida.");
     refresh();
   };
@@ -118,6 +107,7 @@ function Reservas() {
         title="Reservas financeiras"
         subtitle={`${entityName} · reservas reduzem o dinheiro livre`}
         action={
+          canWrite ? (
           <Dialog open={open} onOpenChange={(next) => {
             setOpen(next);
             if (next && entityId !== "all") setOwnerEntityId(entityId);
@@ -166,6 +156,7 @@ function Reservas() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+          ) : undefined
         }
       />
 
@@ -184,11 +175,12 @@ function Reservas() {
             <div key={r.id} className="panel p-5">
               <div className="flex items-start justify-between gap-2">
                 <div><p className="text-sm font-medium">{r.name}</p><p className="text-[11px] text-muted-foreground">{entity?.name}{account ? ` · ${account.name}` : ""}</p></div>
-                <Button variant="ghost" size="icon" onClick={() => removeReserve(r.id)} title="Remover"><Trash2 className="size-4" /></Button>
+                {canWrite ? <Button variant="ghost" size="icon" onClick={() => removeReserve(r.id)} title="Remover"><Trash2 className="size-4" /></Button> : null}
               </div>
               <p className="num mt-4 text-2xl font-semibold">{brl(Number(r.current_amount))}</p>
               <p className="text-[11px] text-muted-foreground">Meta {brl(Number(r.target_amount))}</p>
               <Progress value={Math.min(ratio * 100, 100)} className="mt-3 h-1.5" />
+              {canWrite ? (
               <div className="mt-3 flex gap-2">
                 <Input defaultValue={Number(r.current_amount).toFixed(2).replace(".", ",")} inputMode="decimal" className="h-8" id={`reserve-${r.id}`} />
                 <Button size="sm" variant="outline" onClick={() => {
@@ -196,6 +188,7 @@ function Reservas() {
                   if (el) updateCurrent(r.id, el.value);
                 }}>Atualizar</Button>
               </div>
+              ) : null}
               {r.notes ? <p className="mt-2 text-[11px] text-muted-foreground">{r.notes}</p> : null}
             </div>
           );

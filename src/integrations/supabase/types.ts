@@ -223,6 +223,7 @@ export type Database = {
       }
       categories: {
         Row: {
+          active: boolean
           color: string
           created_at: string
           id: string
@@ -233,6 +234,7 @@ export type Database = {
           user_id: string | null
         }
         Insert: {
+          active?: boolean
           color?: string
           created_at?: string
           id?: string
@@ -243,6 +245,7 @@ export type Database = {
           user_id?: string | null
         }
         Update: {
+          active?: boolean
           color?: string
           created_at?: string
           id?: string
@@ -271,6 +274,8 @@ export type Database = {
           id: string
           installment_no: number
           is_demo: boolean
+          paid_at: string | null
+          payment_transaction_id: string | null
           purchase_id: string
           space_id: string | null
           status: string
@@ -284,6 +289,8 @@ export type Database = {
           id?: string
           installment_no: number
           is_demo?: boolean
+          paid_at?: string | null
+          payment_transaction_id?: string | null
           purchase_id: string
           space_id?: string | null
           status?: string
@@ -297,6 +304,8 @@ export type Database = {
           id?: string
           installment_no?: number
           is_demo?: boolean
+          paid_at?: string | null
+          payment_transaction_id?: string | null
           purchase_id?: string
           space_id?: string | null
           status?: string
@@ -308,6 +317,13 @@ export type Database = {
             columns: ["credit_card_id"]
             isOneToOne: false
             referencedRelation: "credit_cards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "credit_card_installments_payment_transaction_id_fkey"
+            columns: ["payment_transaction_id"]
+            isOneToOne: false
+            referencedRelation: "transactions"
             referencedColumns: ["id"]
           },
           {
@@ -595,6 +611,17 @@ export type Database = {
           transaction_id: string | null
           updated_at: string
           user_id: string
+          content_hash: string | null
+          interpretation_version: number
+          interpreted_at: string | null
+          interpretation_model: string | null
+          interpretation_json: Json | null
+          interpretation_error: string | null
+          processing_started_at: string | null
+          processing_by: string | null
+          confirm_idempotency_key: string | null
+          credit_card_purchase_id: string | null
+          possible_recurring: boolean
         }
         Insert: {
           created_at?: string
@@ -611,6 +638,17 @@ export type Database = {
           transaction_id?: string | null
           updated_at?: string
           user_id: string
+          content_hash?: string | null
+          interpretation_version?: number
+          interpreted_at?: string | null
+          interpretation_model?: string | null
+          interpretation_json?: Json | null
+          interpretation_error?: string | null
+          processing_started_at?: string | null
+          processing_by?: string | null
+          confirm_idempotency_key?: string | null
+          credit_card_purchase_id?: string | null
+          possible_recurring?: boolean
         }
         Update: {
           created_at?: string
@@ -627,6 +665,17 @@ export type Database = {
           transaction_id?: string | null
           updated_at?: string
           user_id?: string
+          content_hash?: string | null
+          interpretation_version?: number
+          interpreted_at?: string | null
+          interpretation_model?: string | null
+          interpretation_json?: Json | null
+          interpretation_error?: string | null
+          processing_started_at?: string | null
+          processing_by?: string | null
+          confirm_idempotency_key?: string | null
+          credit_card_purchase_id?: string | null
+          possible_recurring?: boolean
         }
         Relationships: [
           {
@@ -783,14 +832,21 @@ export type Database = {
           created_at: string
           day_of_month: number | null
           description: string
+          ends_at: string | null
           entity_id: string
           frequency: string
           id: string
           is_demo: boolean
           kind: string
+          month_of_year: number | null
           next_run: string | null
+          notes: string | null
+          payment_method: string
           space_id: string | null
+          starts_at: string
+          updated_at: string
           user_id: string | null
+          weekday: number | null
         }
         Insert: {
           account_id?: string | null
@@ -800,14 +856,21 @@ export type Database = {
           created_at?: string
           day_of_month?: number | null
           description: string
+          ends_at?: string | null
           entity_id: string
           frequency?: string
           id?: string
           is_demo?: boolean
           kind: string
+          month_of_year?: number | null
           next_run?: string | null
+          notes?: string | null
+          payment_method?: string
           space_id?: string | null
+          starts_at?: string
+          updated_at?: string
           user_id?: string | null
+          weekday?: number | null
         }
         Update: {
           account_id?: string | null
@@ -817,14 +880,21 @@ export type Database = {
           created_at?: string
           day_of_month?: number | null
           description?: string
+          ends_at?: string | null
           entity_id?: string
           frequency?: string
           id?: string
           is_demo?: boolean
           kind?: string
+          month_of_year?: number | null
           next_run?: string | null
+          notes?: string | null
+          payment_method?: string
           space_id?: string | null
+          starts_at?: string
+          updated_at?: string
           user_id?: string | null
+          weekday?: number | null
         }
         Relationships: [
           {
@@ -937,11 +1007,14 @@ export type Database = {
           installment_no: number | null
           installment_total: number | null
           is_demo: boolean
+          idempotency_key: string | null
           kind: string
           notes: string | null
           paid_at: string | null
           payment_method: string
           recurrence: string
+          recurring_occurrence_date: string | null
+          recurring_transaction_id: string | null
           source: string
           space_id: string | null
           status: string
@@ -965,11 +1038,14 @@ export type Database = {
           installment_no?: number | null
           installment_total?: number | null
           is_demo?: boolean
+          idempotency_key?: string | null
           kind: string
           notes?: string | null
           paid_at?: string | null
           payment_method?: string
           recurrence?: string
+          recurring_occurrence_date?: string | null
+          recurring_transaction_id?: string | null
           source?: string
           space_id?: string | null
           status?: string
@@ -993,11 +1069,14 @@ export type Database = {
           installment_no?: number | null
           installment_total?: number | null
           is_demo?: boolean
+          idempotency_key?: string | null
           kind?: string
           notes?: string | null
           paid_at?: string | null
           payment_method?: string
           recurrence?: string
+          recurring_occurrence_date?: string | null
+          recurring_transaction_id?: string | null
           source?: string
           space_id?: string | null
           status?: string
@@ -1033,6 +1112,13 @@ export type Database = {
             columns: ["entity_id"]
             isOneToOne: false
             referencedRelation: "financial_entities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_recurring_transaction_id_fkey"
+            columns: ["recurring_transaction_id"]
+            isOneToOne: false
+            referencedRelation: "recurring_transactions"
             referencedColumns: ["id"]
           },
           {
@@ -1164,6 +1250,30 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      add_months_clamped: {
+        Args: { p_date: string; p_desired_day?: number | null; p_months: number }
+        Returns: string
+      }
+      update_recurring_transaction: {
+        Args: {
+          p_account_id: string
+          p_amount: number
+          p_category_id: string
+          p_day_of_month?: number | null
+          p_description: string
+          p_ends_at?: string | null
+          p_entity_id: string
+          p_frequency: string
+          p_id: string
+          p_kind: string
+          p_month_of_year?: number | null
+          p_notes?: string | null
+          p_payment_method?: string
+          p_starts_at: string
+          p_weekday?: number | null
+        }
+        Returns: string
+      }
       can_manage_finance_document_path: {
         Args: { p_name: string }
         Returns: boolean
@@ -1187,7 +1297,7 @@ export type Database = {
       consume_finance_invite: { Args: { p_token: string }; Returns: string }
       create_credit_card_purchase: {
         Args: {
-          _category_id: string
+          _category_id?: string | null
           _credit_card_id: string
           _description: string
           _installments?: number
@@ -1208,11 +1318,36 @@ export type Database = {
           token: string
         }[]
       }
+      create_recurring_transaction: {
+        Args: {
+          p_account_id: string
+          p_amount: number
+          p_category_id: string
+          p_day_of_month?: number | null
+          p_description: string
+          p_ends_at?: string | null
+          p_entity_id: string
+          p_frequency: string
+          p_kind: string
+          p_month_of_year?: number | null
+          p_notes?: string | null
+          p_payment_method?: string
+          p_starts_at: string
+          p_weekday?: number | null
+        }
+        Returns: string
+      }
       current_finance_space_id: { Args: never; Returns: string }
+      end_recurring_transaction: {
+        Args: { p_ends_at?: string; p_id: string }
+        Returns: string
+      }
+      ensure_finance_default_categories: { Args: { p_space_id: string }; Returns: number }
       ensure_finance_workspace: {
         Args: { _user_id: string }
         Returns: undefined
       }
+      generate_due_recurring_transactions: { Args: { p_until?: string }; Returns: number }
       inspect_finance_invite: {
         Args: { p_token: string }
         Returns: {
@@ -1256,11 +1391,224 @@ export type Database = {
           used_at: string
         }[]
       }
+      pause_recurring_transaction: { Args: { p_id: string }; Returns: boolean }
+      pay_credit_card_bill: {
+        Args: {
+          p_account_id?: string
+          p_credit_card_id: string
+          p_paid_at?: string
+          p_reference_month: string
+        }
+        Returns: {
+          installment_count: number
+          total_paid: number
+          transaction_id: string
+        }[]
+      }
+      pay_credit_card_installment: {
+        Args: {
+          p_account_id?: string
+          p_installment_id: string
+          p_paid_at?: string
+        }
+        Returns: string
+      }
+      resume_recurring_transaction: { Args: { p_id: string }; Returns: string }
       revoke_finance_invite: { Args: { p_invite_id: string }; Returns: boolean }
       revoke_finance_member: { Args: { p_user_id: string }; Returns: boolean }
       shares_finance_space_with: {
         Args: { p_other_user_id: string }
         Returns: boolean
+      }
+      create_financial_entity: {
+        Args: { p_name: string; p_kind: string; p_color: string; p_slug: string }
+        Returns: string
+      }
+      toggle_financial_entity_active: { Args: { p_id: string }; Returns: boolean }
+      create_account: {
+        Args: {
+          p_entity_id: string
+          p_name: string
+          p_type: string
+          p_bank: string
+          p_opening_balance: number
+        }
+        Returns: string
+      }
+      toggle_account_active: { Args: { p_id: string }; Returns: boolean }
+      create_transaction: {
+        Args: {
+          p_entity_id: string
+          p_account_id: string
+          p_kind: string
+          p_description: string
+          p_amount: number
+          p_category_id?: string | null
+          p_to_account_id?: string | null
+          p_payment_method?: string | null
+          p_competence_date?: string | null
+          p_due_date?: string | null
+          p_status?: string | null
+          p_notes?: string | null
+          p_installments?: number | null
+          p_amount_mode?: string | null
+          p_shift_competence?: boolean | null
+          p_source?: string | null
+          p_idempotency_key?: string | null
+        }
+        Returns: string
+      }
+      cancel_transaction: { Args: { p_id: string }; Returns: string }
+      settle_transaction: {
+        Args: { p_id: string; p_paid_at?: string | null }
+        Returns: string
+      }
+      upsert_budget: {
+        Args: {
+          p_entity_id: string
+          p_category_id: string
+          p_month: string
+          p_planned_amount: number
+        }
+        Returns: string
+      }
+      delete_budget: { Args: { p_id: string }; Returns: string }
+      create_reserve: {
+        Args: {
+          p_entity_id: string
+          p_name: string
+          p_target_amount: number
+          p_current_amount: number
+          p_account_id?: string | null
+          p_notes?: string | null
+        }
+        Returns: string
+      }
+      update_reserve_amount: {
+        Args: { p_id: string; p_current_amount: number }
+        Returns: string
+      }
+      delete_reserve: { Args: { p_id: string }; Returns: string }
+      create_category: {
+        Args: { p_name: string; p_kind: string; p_color: string }
+        Returns: string
+      }
+      update_category: {
+        Args: { p_id: string; p_name: string; p_kind: string; p_color: string }
+        Returns: string
+      }
+      toggle_category_active: { Args: { p_id: string }; Returns: boolean }
+      create_credit_card: {
+        Args: {
+          p_entity_id: string
+          p_name: string
+          p_credit_limit: number
+          p_closing_day: number
+          p_due_day: number
+          p_account_id?: string | null
+          p_brand?: string | null
+        }
+        Returns: string
+      }
+      register_financial_document: {
+        Args: {
+          p_storage_path: string
+          p_file_name: string
+          p_mime_type?: string | null
+          p_size_bytes?: number | null
+          p_source?: string | null
+          p_content_hash?: string | null
+        }
+        Returns: {
+          document_id: string
+          is_duplicate: boolean
+          status: string
+          storage_path: string
+        }[]
+      }
+      find_financial_document_by_hash: {
+        Args: { p_content_hash: string }
+        Returns: {
+          document_id: string
+          storage_path: string
+          status: string
+        }[]
+      }
+      claim_financial_document_processing: {
+        Args: { p_id: string; p_force?: boolean | null }
+        Returns: {
+          claimed: boolean
+          already_interpreted: boolean
+          status: string
+          interpretation_json: Json | null
+          interpretation_version: number
+          storage_path: string
+          mime_type: string | null
+          size_bytes: number | null
+          file_name: string
+        }[]
+      }
+      save_financial_document_interpretation: {
+        Args: {
+          p_id: string
+          p_json: Json
+          p_model: string
+          p_possible_recurring?: boolean | null
+        }
+        Returns: string
+      }
+      fail_financial_document_interpretation: {
+        Args: { p_id: string; p_error: string }
+        Returns: string
+      }
+      confirm_financial_document_transaction: {
+        Args: {
+          p_id: string
+          p_entity_id: string
+          p_kind: string
+          p_description: string
+          p_amount: number
+          p_account_id?: string | null
+          p_category_id?: string | null
+          p_payment_method?: string | null
+          p_competence_date?: string | null
+          p_due_date?: string | null
+          p_status?: string | null
+          p_notes?: string | null
+          p_credit_card_id?: string | null
+          p_installments?: number | null
+        }
+        Returns: {
+          transaction_id: string | null
+          credit_card_purchase_id: string | null
+          status: string
+        }[]
+      }
+      archive_financial_document: { Args: { p_id: string }; Returns: string }
+      reconcile_financial_documents: {
+        Args: never
+        Returns: {
+          issue: string
+          document_id: string | null
+          storage_path: string | null
+          detail: string
+        }[]
+      }
+      set_financial_document_status: {
+        Args: { p_id: string; p_status: string }
+        Returns: string
+      }
+      link_financial_document: {
+        Args: { p_id: string; p_transaction_id: string }
+        Returns: string
+      }
+      mark_financial_document_failed: {
+        Args: { p_storage_path: string; p_file_name: string }
+        Returns: string
+      }
+      split_money_installments: {
+        Args: { p_count: number; p_total: number }
+        Returns: number[]
       }
     }
     Enums: {
