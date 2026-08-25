@@ -6,6 +6,7 @@ function assert(cond: unknown, message: string) {
 
 const WRITE_RPCS = [
   "create_financial_entity",
+  "update_financial_entity",
   "toggle_financial_entity_active",
   "create_account",
   "toggle_account_active",
@@ -50,7 +51,7 @@ export function runAuditIntegrityChecks() {
   assert(keyA !== keyB, "T4 chaves de idempotência distintas");
   assert(/^[0-9a-f-]{36}$/i.test(keyA), "T4 UUID de idempotência");
 
-  assert(WRITE_RPCS.length === 25, "contrato de RPCs de escrita");
+  assert(WRITE_RPCS.length === 26, "contrato de RPCs de escrita");
   assert(AUDIT_ACTIONS.includes("cancel") && AUDIT_ACTIONS.includes("settle"), "ações padrão");
   assert(DOCUMENT_STATES.includes("interpreted") && !(DOCUMENT_STATES as readonly string[]).includes("processed"), "T11 estados de documento");
 

@@ -10,7 +10,7 @@ import type { UploadedDocument } from "./QuickDocumentUpload";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { brl, type TxKind } from "@/lib/finance";
-import { resolveCategoryId, selectableCategories } from "@/lib/categories";
+import { compactAiCategory, compactAiEntity, matchEntityRecord, resolveCategoryId, resolveCategoryMatch, selectableCategories } from "@/lib/categories";
 import { isValidDateIso, localDateIso, parseLooseDate } from "@/lib/date";
 import { parseBRLMoney, roundMoney } from "@/lib/money";
 import { newIdempotencyKey } from "@/lib/idempotency";
@@ -133,6 +133,8 @@ export function MobileQuickEntry({ documents = [] }: Props) {
     amount?: number;
     entity_id?: string | null;
     category_id?: string | null;
+    category_name?: string | null;
+    entity_name?: string | null;
     account_id?: string | null;
     description?: string;
     document_date?: string | null;
@@ -140,15 +142,21 @@ export function MobileQuickEntry({ documents = [] }: Props) {
     confidence?: number;
   }, originalText: string): Draft | null => {
     if (!ai?.kind || !ai.amount || Number(ai.amount) <= 0 || (ai.confidence ?? 0) < 0.5) return null;
-    const entity = data.entities.find((e) => e.id === ai.entity_id) ??
-      (selectedEntityId !== "all" ? data.entities.find((e) => e.id === selectedEntityId) : undefined) ??
+    const preferredEntityId = selectedEntityId !== "all" ? selectedEntityId : null;
+    const entityMatch = matchEntityRecord(
+      data.entities,
+      `${ai.entity_name ?? ""} ${originalText}`,
+      preferredEntityId,
+    );
+    const entity = data.entities.find((e) => e.id === entityMatch.id) ??
+      (preferredEntityId ? data.entities.find((e) => e.id === preferredEntityId) : undefined) ??
       data.entities.find((e) => e.slug === "pessoal") ?? data.entities[0];
     if (!entity) return null;
     const categoryId = resolveCategoryId(
       data.categories,
       ai.kind,
-      ai.category_id,
-      `${ai.description ?? ""} ${ai.vendor ?? ""} ${originalText}`,
+      null,
+      `${ai.category_name ?? ""} ${ai.description ?? ""} ${ai.vendor ?? ""} ${originalText}`,
     );
     const account = data.accounts.find((a) => a.id === ai.account_id && a.entity_id === entity.id && a.active) ??
       data.accounts.find((a) => a.entity_id === entity.id && a.active) ?? data.accounts.find((a) => a.entity_id === entity.id);
@@ -172,20 +180,19 @@ export function MobileQuickEntry({ documents = [] }: Props) {
     const installment = parseInstallment(originalText);
     const amount = installment?.installmentAmount ?? parseAmount(originalText);
     if (!amount) return null;
-    const n = normalize(originalText);
     const kind = inferKind(originalText);
-    const explicitEntity = data.entities.find((e) => n.includes(normalize(e.name)));
-    const entity = explicitEntity ??
-      (selectedEntityId !== "all" ? data.entities.find((e) => e.id === selectedEntityId) : undefined) ??
+    const preferredEntityId = selectedEntityId !== "all" ? selectedEntityId : null;
+    const entityMatch = matchEntityRecord(data.entities, originalText, preferredEntityId);
+    const entity = data.entities.find((e) => e.id === entityMatch.id) ??
       data.entities.find((e) => e.slug === "pessoal") ?? data.entities[0];
     if (!entity) return null;
     const account = data.accounts.find((a) => a.entity_id === entity.id && a.active) ?? data.accounts.find((a) => a.entity_id === entity.id);
     if (!account) return null;
 
-    const categoryText = removeEntityMention(originalText, explicitEntity?.name);
+    const categoryText = removeEntityMention(originalText, entity.name);
     const categories = selectableCategories(data.categories, kind);
-    const matchedId = resolveCategoryId(categories, kind, null, categoryText);
-    const category = categories.find((c) => c.id === matchedId) ?? null;
+    const categoryMatch = resolveCategoryMatch(categories, kind, categoryText);
+    const categoryId = categoryMatch.ambiguous ? null : categoryMatch.id;
 
     let stripped = originalText;
     if (installment) stripped = stripped.replace(installment.matchedText, "");
@@ -193,12 +200,12 @@ export function MobileQuickEntry({ documents = [] }: Props) {
       .replace(/\d[\d.,]*/g, " ").replace(/\s+/g, " ").trim();
 
     const result: Draft = {
-      kind, amount, entityId: entity.id, categoryId: category?.id ?? null, accountId: account.id,
+      kind, amount, entityId: entity.id, categoryId, accountId: account.id,
       description: stripped || (kind === "income" ? "Entrada rápida" : "Saída rápida"),
       originalText, parser: "local", ...(installment ? { installmentCount: installment.count, totalAmount: installment.totalAmount } : {}),
       pending: inferPending(originalText, kind),
     };
-    const confident = Boolean(category) && (Boolean(installment) || Boolean(explicitEntity) || selectedEntityId !== "all");
+    const confident = !categoryMatch.ambiguous && categoryMatch.confidence >= 0.8;
     return { result, confident };
   };
 
@@ -211,8 +218,9 @@ export function MobileQuickEntry({ documents = [] }: Props) {
       headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
       body: JSON.stringify({
         text: originalText,
-        entities: data.entities.map(({ id, name, slug }) => ({ id, name, slug })),
-        categories: selectableCategories(data.categories).map(({ id, name, kind }) => ({ id, name, kind })),
+        selected_entity_id: selectedEntityId !== "all" ? selectedEntityId : null,
+        entities: data.entities.map((entity) => compactAiEntity(entity)),
+        categories: selectableCategories(data.categories).map((category) => compactAiCategory(category)),
         accounts: data.accounts.filter((a) => a.active).map(({ id, name, entity_id }) => ({ id, name, entity_id })),
       }),
     });

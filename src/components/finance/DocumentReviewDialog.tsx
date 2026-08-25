@@ -101,6 +101,11 @@ export function DocumentReviewDialog({ open, documentId, suggestion, onOpenChang
             A entidade ficou ambígua. Escolha manualmente antes de confirmar.
           </p>
         ) : null}
+        {suggestion.ambiguous_category ? (
+          <p className="rounded-md border border-border bg-surface px-3 py-2 text-xs text-muted-foreground">
+            A categoria ficou ambígua. Confira antes de confirmar — a IA não escolheu sozinha.
+          </p>
+        ) : null}
         {suggestion.possible_recurring ? (
           <p className="rounded-md border border-border bg-surface px-3 py-2 text-xs text-muted-foreground">
             Este documento parece recorrente. Recorrência não é criada automaticamente.

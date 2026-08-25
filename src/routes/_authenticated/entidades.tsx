@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Building2, Plus, Power } from "lucide-react";
+import { Building2, Pencil, Plus, Power } from "lucide-react";
 import { toast } from "sonner";
 import { createFileRouteHead } from "@/lib/head";
 import { supabase } from "@/integrations/supabase/client";
@@ -11,7 +11,9 @@ import { useRefreshFinance } from "@/hooks/useFinance";
 import { useEntityScope } from "@/components/finance/EntityContext";
 import { PageHeader } from "@/components/finance/PageHeader";
 import { Td, Th } from "./lancamentos";
-import { brl, entitySummaries, monthLabel, pct, today } from "@/lib/finance";
+import { brl, entitySummaries, monthLabel, pct, today, type FinancialEntity } from "@/lib/finance";
+import { clipAiDescription, formatKeywordInput, normalizeCategoryName, parseKeywordInput } from "@/lib/categories";
+import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,6 +40,25 @@ export const Route = createFileRoute("/_authenticated/entidades")({
 
 const DEFAULT_COLORS = ["#E8B923", "#38BDF8", "#A78BFA", "#F97316", "#F43F5E", "#22C55E", "#EAB308"];
 
+const ENTITY_AI_SUGGESTIONS: Record<string, { description: string; keywords: string[] }> = {
+  shopee: {
+    description: "Receitas e despesas relacionadas às entregas e operações da Shopee.",
+    keywords: ["shopee", "entrega", "pacote", "rota", "coleta"],
+  },
+  softworks: {
+    description: "Receitas e despesas de desenvolvimento de software e tecnologia.",
+    keywords: ["software", "sistema", "app", "desenvolvimento", "ia", "programação"],
+  },
+  tguianet: {
+    description: "Receitas e despesas da operação comercial da TGuiaNet.",
+    keywords: ["tguianet", "marketing", "publicidade", "cliente", "agência"],
+  },
+};
+
+function suggestionForEntity(name: string) {
+  return ENTITY_AI_SUGGESTIONS[normalizeCategoryName(name)] ?? null;
+}
+
 function slugify(value: string) {
   return value
     .normalize("NFD")
@@ -58,10 +79,15 @@ function Entidades() {
   const rows = entitySummaries(data, ref);
   const total = rows.reduce((s, r) => s + r.balance, 0);
   const [open, setOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editing, setEditing] = useState<FinancialEntity | null>(null);
   const [busy, setBusy] = useState(false);
   const [name, setName] = useState("");
   const [kind, setKind] = useState<"personal" | "company">("company");
   const [color, setColor] = useState(DEFAULT_COLORS[0] ?? "#EAB308");
+  const [description, setDescription] = useState("");
+  const [keywords, setKeywords] = useState("");
+  const [suggestionNote, setSuggestionNote] = useState(false);
 
   const createEntity = async () => {
     if (!user) { toast.error("Sessão expirada."); return; }
@@ -90,6 +116,42 @@ function Entidades() {
     refresh();
   };
 
+  const openEdit = (entity: FinancialEntity) => {
+    setEditing(entity);
+    setName(entity.name);
+    setColor(entity.color);
+    const emptyContext = !entity.description && !(entity.ai_keywords ?? []).length;
+    const suggestion = emptyContext ? suggestionForEntity(entity.name) : null;
+    setDescription(entity.description ?? suggestion?.description ?? "");
+    setKeywords(formatKeywordInput(entity.ai_keywords?.length ? entity.ai_keywords : suggestion?.keywords));
+    setSuggestionNote(Boolean(suggestion));
+    setEditOpen(true);
+  };
+
+  const saveEntity = async () => {
+    if (!editing) return;
+    if (!canWrite) { toast.error("Seu acesso é somente leitura."); return; }
+    const cleanName = name.trim();
+    if (!cleanName) { toast.error("Informe o nome da empresa ou entidade."); return; }
+    setBusy(true);
+    const { error } = await supabase.rpc("update_financial_entity", {
+      p_id: editing.id,
+      p_name: cleanName,
+      p_color: color,
+      p_description: clipAiDescription(description),
+      p_ai_keywords: parseKeywordInput(keywords),
+    });
+    setBusy(false);
+    if (error) {
+      toast.error(rpcErrorMessage(error, "Não foi possível atualizar a entidade."));
+      return;
+    }
+    setEditOpen(false);
+    setEditing(null);
+    toast.success("Entidade atualizada.");
+    refresh();
+  };
+
   const toggleActive = async (id: string, current: boolean) => {
     if (!canWrite) { toast.error("Seu acesso é somente leitura."); return; }
     const { error } = await supabase.rpc("toggle_financial_entity_active", { p_id: id });
@@ -105,7 +167,14 @@ function Entidades() {
         subtitle={`Consolidado de ${monthLabel(ref)} · saldo total ${brl(total)}`}
         action={
           canWrite ? (
-          <Dialog open={open} onOpenChange={setOpen}>
+          <Dialog open={open} onOpenChange={(next) => {
+            setOpen(next);
+            if (next) {
+              setName("");
+              setKind("company");
+              setColor(DEFAULT_COLORS[0] ?? "#EAB308");
+            }
+          }}>
             <DialogTrigger asChild>
               <Button className="gap-2"><Plus className="size-4" /> Nova entidade</Button>
             </DialogTrigger>
@@ -175,7 +244,7 @@ function Entidades() {
               <Th className="text-right">Despesas do mês</Th>
               <Th className="text-right">Resultado</Th>
               <Th className="w-48">Participação</Th>
-              <Th className="text-right">Status</Th>
+              <Th className="text-right">{canWrite ? "Ações" : "Status"}</Th>
             </tr>
           </thead>
           <tbody>
@@ -184,7 +253,12 @@ function Entidades() {
                 <Td>
                   <div className="flex items-center gap-2">
                     <span className="size-2.5 rounded-full" style={{ backgroundColor: r.entity.color }} />
-                    <span className="font-medium">{r.entity.name}</span>
+                    <div className="min-w-0">
+                      <span className="font-medium">{r.entity.name}</span>
+                      {r.entity.description ? (
+                        <p className="max-w-xs truncate text-[11px] text-muted-foreground">{r.entity.description}</p>
+                      ) : null}
+                    </div>
                   </div>
                 </Td>
                 <Td className="text-muted-foreground">{r.entity.kind === "personal" ? "Pessoal" : "Empresa"}</Td>
@@ -200,14 +274,19 @@ function Entidades() {
                 </Td>
                 <Td className="text-right">
                   {canWrite ? (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="gap-2"
-                    onClick={() => toggleActive(r.entity.id, r.entity.active)}
-                  >
-                    <Power className="size-3.5" /> {r.entity.active ? "Ativa" : "Inativa"}
-                  </Button>
+                    <div className="flex justify-end gap-1">
+                      <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => openEdit(r.entity)}>
+                        <Pencil className="size-3.5" /> Editar
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="gap-2"
+                        onClick={() => toggleActive(r.entity.id, r.entity.active)}
+                      >
+                        <Power className="size-3.5" /> {r.entity.active ? "Ativa" : "Inativa"}
+                      </Button>
+                    </div>
                   ) : (
                     <span className="text-xs text-muted-foreground">{r.entity.active ? "Ativa" : "Inativa"}</span>
                   )}
@@ -222,8 +301,69 @@ function Entidades() {
       </div>
 
       <p className="mt-4 text-xs text-muted-foreground">
-        Desativar uma entidade não apaga lançamentos nem histórico financeiro.
+        Desativar uma entidade não apaga lançamentos nem histórico financeiro. O identificador técnico (slug) não muda ao editar o nome.
       </p>
+
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Editar entidade</DialogTitle>
+            <DialogDescription>
+              Nome, cor e contexto para a IA. O espaço financeiro e o slug não são alterados.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-2">
+            <div>
+              <Label className="mb-1.5 block text-xs uppercase tracking-wider text-muted-foreground">Nome</Label>
+              <Input value={name} onChange={(e) => setName(e.target.value)} />
+            </div>
+            <div>
+              <Label className="mb-1.5 block text-xs uppercase tracking-wider text-muted-foreground">Tipo</Label>
+              <p className="text-sm text-muted-foreground">{editing?.kind === "personal" ? "Pessoal" : "Empresa"}</p>
+            </div>
+            <div>
+              <Label className="mb-1.5 block text-xs uppercase tracking-wider text-muted-foreground">Cor</Label>
+              <div className="flex flex-wrap gap-2">
+                {DEFAULT_COLORS.map((item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    onClick={() => setColor(item)}
+                    className={`size-8 rounded-full border-2 ${color === item ? "border-foreground" : "border-transparent"}`}
+                    style={{ backgroundColor: item }}
+                    aria-label={`Selecionar cor ${item}`}
+                  />
+                ))}
+              </div>
+            </div>
+            <div>
+              <Label className="mb-1.5 block text-xs uppercase tracking-wider text-muted-foreground">Descrição para IA</Label>
+              <Textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Quando esta entidade deve ser escolhida"
+                rows={2}
+                maxLength={180}
+              />
+              {suggestionNote ? (
+                <p className="mt-1 text-[11px] text-muted-foreground">Sugestão com base no nome. Edite antes de salvar — nada é gravado automaticamente.</p>
+              ) : null}
+            </div>
+            <div>
+              <Label className="mb-1.5 block text-xs uppercase tracking-wider text-muted-foreground">Palavras-chave / exemplos</Label>
+              <Input
+                value={keywords}
+                onChange={(e) => setKeywords(e.target.value)}
+                placeholder="shopee, entrega, pacote"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setEditOpen(false)}>Cancelar</Button>
+            <Button onClick={() => void saveEntity()} disabled={busy}>{busy ? "Salvando…" : "Salvar"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

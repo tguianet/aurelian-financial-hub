@@ -50,6 +50,8 @@ export interface FinancialEntity {
   color: string;
   active: boolean;
   is_demo: boolean;
+  description?: string | null;
+  ai_keywords?: string[] | null;
 }
 
 export interface Account {
@@ -70,6 +72,8 @@ export interface Category {
   color: string;
   is_demo: boolean;
   active: boolean;
+  description?: string | null;
+  ai_keywords?: string[] | null;
 }
 
 export interface CreditCard {

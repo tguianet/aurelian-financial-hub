@@ -24,7 +24,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { normalizeCategoryName } from "@/lib/categories";
+import { clipAiDescription, formatKeywordInput, normalizeCategoryName, parseKeywordInput } from "@/lib/categories";
+import { Textarea } from "@/components/ui/textarea";
 import type { Category } from "@/lib/finance";
 
 export const Route = createFileRoute("/_authenticated/categorias")({
@@ -63,6 +64,8 @@ function Categorias() {
   const [name, setName] = useState("");
   const [kind, setKind] = useState<Category["kind"]>("expense");
   const [color, setColor] = useState(DEFAULT_COLORS[0] ?? "#E8B923");
+  const [description, setDescription] = useState("");
+  const [keywords, setKeywords] = useState("");
 
   const rows = useMemo(() => {
     const q = normalizeCategoryName(query);
@@ -73,7 +76,11 @@ function Categorias() {
         if (statusFilter === "inactive") return category.active === false;
         return true;
       })
-      .filter((category) => !q || normalizeCategoryName(category.name).includes(q))
+        .filter((category) => {
+          if (!q) return true;
+          return normalizeCategoryName(category.name).includes(q)
+            || normalizeCategoryName(category.description ?? "").includes(q);
+        })
       .sort((a, b) => {
         if (a.kind !== b.kind) return a.kind === "income" ? -1 : 1;
         return a.name.localeCompare(b.name, "pt-BR");
@@ -85,6 +92,8 @@ function Categorias() {
     setName("");
     setKind("expense");
     setColor(DEFAULT_COLORS[0] ?? "#E8B923");
+    setDescription("");
+    setKeywords("");
     setOpen(true);
   };
 
@@ -93,6 +102,8 @@ function Categorias() {
     setName(category.name);
     setKind(category.kind);
     setColor(category.color);
+    setDescription(category.description ?? "");
+    setKeywords(formatKeywordInput(category.ai_keywords));
     setOpen(true);
   };
 
@@ -119,6 +130,8 @@ function Categorias() {
         p_name: cleanName,
         p_kind: kind,
         p_color: color,
+        p_description: clipAiDescription(description),
+        p_ai_keywords: parseKeywordInput(keywords),
       });
       setBusy(false);
       if (error) { toast.error(duplicateMessage(rpcErrorMessage(error, "Não foi possível atualizar a categoria."))); return; }
@@ -128,6 +141,8 @@ function Categorias() {
         p_name: cleanName,
         p_kind: kind,
         p_color: color,
+        p_description: clipAiDescription(description),
+        p_ai_keywords: parseKeywordInput(keywords),
       });
       setBusy(false);
       if (error) { toast.error(duplicateMessage(rpcErrorMessage(error, "Não foi possível criar a categoria."))); return; }
@@ -230,6 +245,9 @@ function Categorias() {
                     {category.active === false ? "Inativa" : "Ativa"}
                   </Badge>
                 </div>
+                {category.description ? (
+                  <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">{category.description}</p>
+                ) : null}
               </div>
               {canWrite ? (
                 <div className="flex shrink-0 gap-1">
@@ -271,6 +289,9 @@ function Categorias() {
                     <span className="size-2.5 rounded-full" style={{ backgroundColor: category.color }} />
                     {category.name}
                   </div>
+                  {category.description ? (
+                    <p className="mt-1 max-w-md truncate text-xs text-muted-foreground">{category.description}</p>
+                  ) : null}
                 </Td>
                 <Td className="text-muted-foreground">{category.kind === "income" ? "Entrada" : "Saída"}</Td>
                 <Td className="font-mono text-xs text-muted-foreground">{category.color}</Td>
@@ -301,11 +322,11 @@ function Categorias() {
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{editing ? "Editar categoria" : "Nova categoria"}</DialogTitle>
             <DialogDescription>
-              O nome precisa ser único no espaço para o mesmo tipo (entrada ou saída).
+              O nome precisa ser único no espaço para o mesmo tipo. Descrição e palavras-chave ajudam a IA a classificar lançamentos.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-2">
@@ -337,6 +358,25 @@ function Categorias() {
                   />
                 ))}
               </div>
+            </div>
+            <div>
+              <Label className="mb-1.5 block text-xs uppercase tracking-wider text-muted-foreground">Descrição para IA</Label>
+              <Textarea
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
+                placeholder="Quando usar esta categoria"
+                rows={2}
+                maxLength={180}
+              />
+            </div>
+            <div>
+              <Label className="mb-1.5 block text-xs uppercase tracking-wider text-muted-foreground">Palavras-chave / exemplos</Label>
+              <Input
+                value={keywords}
+                onChange={(event) => setKeywords(event.target.value)}
+                placeholder="gasolina, etanol, diesel, posto, abastecimento"
+              />
+              <p className="mt-1 text-[11px] text-muted-foreground">Separe por vírgulas. Usadas só para interpretar, não alteram o histórico.</p>
             </div>
           </div>
           <DialogFooter>

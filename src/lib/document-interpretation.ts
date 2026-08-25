@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { isValidDateIso, parseLooseDate } from "./date";
 import { parseBRLMoney, roundMoney } from "./money";
-import { FALLBACK_CATEGORY_NAME, normalizeCategoryName, resolveCategoryId } from "./categories";
+import { blendSemanticConfidence, matchEntityRecord, resolveCategoryMatch } from "./categories";
 
 export const DOCUMENT_INTERPRETATION_VERSION = 1;
 
@@ -143,6 +143,7 @@ export type ResolvedDocumentSuggestion = {
   entity_id: string | null;
   account_id: string | null;
   ambiguous_entity: boolean;
+  ambiguous_category: boolean;
 };
 
 function parseAmount(raw: unknown): number | null {
@@ -173,24 +174,25 @@ export function stripInventedIds(name: string | null | undefined): string | null
   return trimmed.slice(0, 80);
 }
 
-export function matchEntityByName<T extends { id: string; name: string; active?: boolean }>(
+export function matchEntityByName<T extends { id: string; name: string; active?: boolean; slug?: string | null; description?: string | null; ai_keywords?: string[] | null }>(
   entities: T[],
   suggestedName: string | null,
   preferredId?: string | null,
+  extraHint?: string | null,
 ): { id: string | null; ambiguous: boolean } {
-  const active = entities.filter((entity) => entity.active !== false);
-  if (preferredId && active.some((entity) => entity.id === preferredId)) {
-    return { id: preferredId, ambiguous: false };
-  }
-  const hint = suggestedName ? normalizeCategoryName(suggestedName) : "";
-  if (!hint) return { id: null, ambiguous: false };
-  const matches = active.filter((entity) => {
-    const name = normalizeCategoryName(entity.name);
-    return hint === name || hint.includes(name) || name.includes(hint);
-  });
-  if (matches.length === 1) return { id: matches[0]!.id, ambiguous: false };
-  if (matches.length > 1) return { id: null, ambiguous: true };
-  return { id: null, ambiguous: false };
+  const match = matchEntityRecord(
+    entities.map((entity) => ({
+      id: entity.id,
+      name: entity.name,
+      slug: entity.slug ?? null,
+      active: entity.active !== false,
+      description: entity.description ?? null,
+      ai_keywords: entity.ai_keywords ?? null,
+    })),
+    [suggestedName, extraHint].filter(Boolean).join(" "),
+    preferredId,
+  );
+  return { id: match.id, ambiguous: match.ambiguous };
 }
 
 export function pickAccountForEntity<T extends { id: string; entity_id: string; active?: boolean }>(
@@ -209,8 +211,8 @@ export function parseAiDocumentSuggestion(raw: unknown): AiDocumentSuggestion {
 export function resolveDocumentSuggestion(
   raw: unknown,
   context: {
-    entities: Array<{ id: string; name: string; active?: boolean }>;
-    categories: Array<{ id: string; name: string; kind: "income" | "expense"; active?: boolean }>;
+    entities: Array<{ id: string; name: string; active?: boolean; slug?: string | null; description?: string | null; ai_keywords?: string[] | null }>;
+    categories: Array<{ id: string; name: string; kind: "income" | "expense"; active?: boolean; description?: string | null; ai_keywords?: string[] | null }>;
     accounts: Array<{ id: string; entity_id: string; active?: boolean }>;
     preferredEntityId?: string | null;
   },
@@ -222,23 +224,27 @@ export function resolveDocumentSuggestion(
   const kind = parsed.kind;
   const categoryName = stripInventedIds(parsed.category_name);
   const entityName = stripInventedIds(parsed.entity_name);
-  const categoryId = resolveCategoryId(
+  const categoryHint = `${categoryName ?? ""} ${parsed.description ?? ""}`;
+  const categoryMatch = resolveCategoryMatch(
     context.categories.map((category) => ({
       id: category.id,
       name: category.name,
       kind: category.kind,
       active: category.active !== false,
+      description: category.description ?? null,
+      ai_keywords: category.ai_keywords ?? null,
     })),
     kind,
-    null,
-    `${categoryName ?? ""} ${parsed.description ?? ""}`,
-  ) ?? context.categories.find((category) =>
-    category.kind === kind
-    && category.active !== false
-    && normalizeCategoryName(category.name) === normalizeCategoryName(FALLBACK_CATEGORY_NAME[kind])
-  )?.id ?? null;
+    categoryHint,
+  );
+  const categoryId = categoryMatch.ambiguous ? null : categoryMatch.id;
 
-  const entityMatch = matchEntityByName(context.entities, entityName, context.preferredEntityId ?? null);
+  const entityMatch = matchEntityByName(
+    context.entities,
+    entityName,
+    context.preferredEntityId ?? null,
+    parsed.description,
+  );
   const competence = parseLooseDate(parsed.competence_date ?? null);
   const due = parseLooseDate(parsed.due_date ?? null) ?? competence;
   if (competence && !isValidDateIso(competence)) throw new Error("date_invalid");
@@ -246,7 +252,7 @@ export function resolveDocumentSuggestion(
 
   let confidence = Number(parsed.confidence);
   if (!Number.isFinite(confidence)) confidence = 0.5;
-  confidence = Math.min(1, Math.max(0, confidence));
+  confidence = blendSemanticConfidence(Math.min(1, Math.max(0, confidence)), categoryMatch);
 
   const description = (parsed.description?.trim() || entityName || "Lançamento importado de documento").slice(0, 180);
 
@@ -266,6 +272,7 @@ export function resolveDocumentSuggestion(
     entity_id: entityMatch.id,
     account_id: pickAccountForEntity(context.accounts, entityMatch.id),
     ambiguous_entity: entityMatch.ambiguous,
+    ambiguous_category: categoryMatch.ambiguous,
   };
 }
 
@@ -285,6 +292,7 @@ export const resolvedDocumentSuggestionSchema = z.object({
   entity_id: z.string().nullable(),
   account_id: z.string().nullable(),
   ambiguous_entity: z.boolean(),
+  ambiguous_category: z.boolean().optional().default(false),
 });
 
 export function parseResolvedDocumentSuggestion(raw: unknown): ResolvedDocumentSuggestion | null {

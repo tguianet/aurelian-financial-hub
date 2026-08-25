@@ -3,7 +3,7 @@ import "./lib/error-capture";
 import { createClient } from "@supabase/supabase-js";
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
-import { resolveCategoryId } from "./lib/categories";
+import { compactAiCategory, compactAiEntity, matchEntityRecord, resolveCategoryMatch, blendSemanticConfidence } from "./lib/categories";
 import { parseLooseDate } from "./lib/date";
 import { parseBRLMoney, roundMoney } from "./lib/money";
 import {
@@ -21,9 +21,10 @@ type ServerEntry = {
 };
 
 type FinanceContext = {
-  entities?: Array<{ id: string; name: string; slug?: string }>;
-  categories?: Array<{ id: string; name: string; kind: string }>;
+  entities?: Array<{ id: string; name: string; slug?: string; description?: string | null; ai_keywords?: string[] | null }>;
+  categories?: Array<{ id: string; name: string; kind: string; description?: string | null; ai_keywords?: string[] | null }>;
   accounts?: Array<{ id: string; name: string; entity_id: string }>;
+  selected_entity_id?: string | null;
 };
 
 type FinanceInterpretBody = FinanceContext & {
@@ -119,8 +120,8 @@ function financeSchema() {
     properties: {
       kind: { type: "string", enum: ["income", "expense"] },
       amount: { type: "number" },
-      entity_id: { type: ["string", "null"] },
-      category_id: { type: ["string", "null"] },
+      entity_name: { type: ["string", "null"] },
+      category_name: { type: ["string", "null"] },
       account_id: { type: ["string", "null"] },
       description: { type: "string" },
       document_date: { type: ["string", "null"] },
@@ -130,8 +131,8 @@ function financeSchema() {
     required: [
       "kind",
       "amount",
-      "entity_id",
-      "category_id",
+      "entity_name",
+      "category_name",
       "account_id",
       "description",
       "document_date",
@@ -164,39 +165,77 @@ function normalizeInterpretation(raw: any): { ok: true; value: any } | { ok: fal
 }
 
 
-function financeContext(body: FinanceContext) {
+function compactFinanceCatalog(body: FinanceContext) {
   return {
-    entities: (body.entities ?? []).slice(0, 30),
-    categories: (body.categories ?? []).slice(0, 80),
-    accounts: (body.accounts ?? []).slice(0, 80),
+    entities: (body.entities ?? []).slice(0, 30).map((entity) => compactAiEntity(entity)),
+    categories: (body.categories ?? [])
+      .filter((category) => category.kind === "income" || category.kind === "expense")
+      .slice(0, 80)
+      .map((category) => compactAiCategory({
+        id: category.id,
+        name: category.name,
+        kind: category.kind as "income" | "expense",
+        description: category.description ?? null,
+        ai_keywords: category.ai_keywords ?? null,
+      })),
+    accounts: (body.accounts ?? []).slice(0, 80).map((account) => ({
+      id: account.id,
+      name: account.name,
+      entity_id: account.entity_id,
+    })),
   };
 }
 
-function sanitizeInterpretation(raw: any, context: FinanceContext) {
+function sanitizeInterpretation(raw: any, context: FinanceContext, originalText: string) {
   const normalized = normalizeInterpretation(raw);
   if (!normalized.ok) return normalized;
   const kind = normalized.value.kind as "income" | "expense";
-  const allowed = (context.categories ?? []).map((category) => ({
-    id: category.id,
-    name: category.name,
-    kind: category.kind as "income" | "expense",
-    active: true,
-  }));
-  const categoryId = resolveCategoryId(
-    allowed,
-    kind,
-    typeof normalized.value.category_id === "string" ? normalized.value.category_id : null,
-    `${normalized.value.description ?? ""} ${normalized.value.vendor ?? ""}`,
+  const allowed = (context.categories ?? [])
+    .filter((category) => category.kind === "income" || category.kind === "expense")
+    .map((category) => ({
+      id: category.id,
+      name: category.name,
+      kind: category.kind as "income" | "expense",
+      active: true,
+      description: category.description ?? null,
+      ai_keywords: category.ai_keywords ?? null,
+    }));
+  const categoryHint = [
+    typeof normalized.value.category_name === "string" ? normalized.value.category_name : "",
+    normalized.value.description ?? "",
+    normalized.value.vendor ?? "",
+    originalText,
+  ].join(" ");
+  const categoryMatch = resolveCategoryMatch(allowed, kind, categoryHint);
+  const categoryId = categoryMatch.ambiguous ? null : categoryMatch.id;
+  const entityHint = [
+    typeof normalized.value.entity_name === "string" ? normalized.value.entity_name : "",
+    originalText,
+  ].join(" ");
+  const entityMatch = matchEntityRecord(
+    (context.entities ?? []).map((entity) => ({
+      id: entity.id,
+      name: entity.name,
+      slug: entity.slug ?? null,
+      active: true,
+      description: entity.description ?? null,
+      ai_keywords: entity.ai_keywords ?? null,
+    })),
+    entityHint,
+    context.selected_entity_id ?? null,
   );
-  const entityIds = new Set((context.entities ?? []).map((entity) => entity.id));
   const accountIds = new Set((context.accounts ?? []).map((account) => account.id));
+  const entityId = entityMatch.ambiguous ? null : entityMatch.id;
   return {
     ok: true as const,
     value: {
       ...normalized.value,
       category_id: categoryId,
-      entity_id: entityIds.has(normalized.value.entity_id) ? normalized.value.entity_id : null,
+      entity_id: entityId,
       account_id: accountIds.has(normalized.value.account_id) ? normalized.value.account_id : null,
+      confidence: blendSemanticConfidence(normalized.value.confidence, categoryMatch),
+      ambiguous_category: categoryMatch.ambiguous,
+      ambiguous_entity: entityMatch.ambiguous,
     },
   };
 }
@@ -228,7 +267,7 @@ async function handleFinanceInterpret(request: Request, env: unknown): Promise<R
   if (!apiKey) return json({ error: "ai_not_configured" }, 503);
 
   const model = envValue(env, "OPENAI_MODEL") || "gpt-5.6-luna";
-  const context = financeContext(body);
+  const catalog = compactFinanceCatalog(body);
 
   const response = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
@@ -239,9 +278,9 @@ async function handleFinanceInterpret(request: Request, env: unknown): Promise<R
         {
           role: "system",
           content:
-            "Voce interpreta lancamentos financeiros pessoais e empresariais em portugues do Brasil. Nunca invente IDs. Use apenas IDs fornecidos. Escolha income para dinheiro que entrou e expense para dinheiro que saiu. Extraia o valor monetario principal. Se uma entidade, categoria ou conta nao puder ser determinada com seguranca, retorne null nesse ID. Descricao deve ser curta e util. document_date use YYYY-MM-DD quando houver data explicita, senao null. Confidence vai de 0 a 1.",
+            "Voce interpreta lancamentos financeiros pessoais e empresariais em portugues do Brasil. Nunca invente IDs nem UUIDs. Os IDs no catalogo sao apenas referencia tecnica. Devolva category_name e entity_name exatamente como no catalogo, ou null se houver duvida. Use description e keywords do catalogo para desambiguar. Escolha income para dinheiro que entrou e expense para dinheiro que saiu. Extraia o valor monetario principal. Descricao deve ser curta e util. document_date use YYYY-MM-DD quando houver data explicita, senao null. Confidence vai de 0 a 1. Se duas categorias forem plausiveis, retorne null em category_name.",
         },
-        { role: "user", content: `Comando: ${text}\n\nOpcoes disponiveis:\n${JSON.stringify(context)}` },
+        { role: "user", content: `Comando: ${text}\n\nOpcoes disponiveis:\n${JSON.stringify(catalog)}` },
       ],
       text: { format: { type: "json_schema", name: "finance_interpretation", strict: true, schema: financeSchema() } },
       max_output_tokens: 260,
@@ -260,7 +299,7 @@ async function handleFinanceInterpret(request: Request, env: unknown): Promise<R
 
   try {
     const parsed = JSON.parse(output);
-    const sanitized = sanitizeInterpretation(parsed, context);
+    const sanitized = sanitizeInterpretation(parsed, body, text);
     if (!sanitized.ok) return json({ error: "ai_invalid_response" }, 502);
     return json({ source: "openai", interpretation: sanitized.value });
   } catch {
@@ -348,8 +387,8 @@ async function handleDocumentInterpret(request: Request, env: unknown): Promise<
   }
 
   const [entities, categories, accounts] = await Promise.all([
-    supabase.from("financial_entities").select("id, name, active").eq("is_demo", false),
-    supabase.from("categories").select("id, name, kind, active").eq("is_demo", false),
+    supabase.from("financial_entities").select("id, name, slug, active, description, ai_keywords").eq("is_demo", false),
+    supabase.from("categories").select("id, name, kind, active, description, ai_keywords").eq("is_demo", false),
     supabase.from("accounts").select("id, entity_id, active").eq("is_demo", false),
   ]);
 
@@ -363,8 +402,24 @@ async function handleDocumentInterpret(request: Request, env: unknown): Promise<
   }
   const model = envValue(env, "OPENAI_MODEL") || "gpt-5.6-luna";
   const nameContext = {
-    entities: (entities.data ?? []).map((row) => ({ name: row.name })),
-    categories: (categories.data ?? []).map((row) => ({ name: row.name, kind: row.kind })),
+    entities: (entities.data ?? []).slice(0, 30).map((row) => compactAiEntity({
+      id: row.id,
+      name: row.name,
+      slug: row.slug ?? null,
+      description: row.description ?? null,
+      ai_keywords: row.ai_keywords ?? null,
+    })).map(({ name, slug, description, keywords }) => ({ name, slug, description, keywords })),
+    categories: (categories.data ?? [])
+      .filter((row) => row.kind === "income" || row.kind === "expense")
+      .slice(0, 80)
+      .map((row) => compactAiCategory({
+        id: row.id,
+        name: row.name,
+        kind: row.kind as "income" | "expense",
+        description: row.description ?? null,
+        ai_keywords: row.ai_keywords ?? null,
+      }))
+      .map(({ name, kind, description, keywords }) => ({ name, kind, description, keywords })),
   };
 
   const fail = async (code: string, message: string, status = 502, errorText = message) => {
@@ -389,7 +444,7 @@ async function handleDocumentInterpret(request: Request, env: unknown): Promise<
           {
             role: "system",
             content:
-              "Voce extrai lancamentos financeiros de documentos em portugues do Brasil. Nunca invente valores. Nunca retorne UUIDs ou IDs internos. Use nomes. kind=income para receber e expense para pagar/gasto. Datas em YYYY-MM-DD. payment_method em pix,cash,debit,credit,boleto,transfer,other. possible_recurring so se parecer mensalidade/assinatura. Confidence 0 a 1.",
+              "Voce extrai lancamentos financeiros de documentos em portugues do Brasil. Nunca invente valores. Nunca retorne UUIDs ou IDs internos. Use nomes do catalogo. kind=income para receber e expense para pagar/gasto. Datas em YYYY-MM-DD. payment_method em pix,cash,debit,credit,boleto,transfer,other. possible_recurring so se parecer mensalidade/assinatura. Use description e keywords do catalogo para escolher category_name e entity_name. Se houver ambiguidade, retorne null no nome. Confidence 0 a 1.",
           },
           {
             role: "user",
@@ -398,7 +453,7 @@ async function handleDocumentInterpret(request: Request, env: unknown): Promise<
                 type: "input_text",
                 text:
                   `Leia o comprovante. Contexto opcional: ${body.text?.trim()?.slice(0, 400) || "(sem texto)"}. ` +
-                  `Nomes disponiveis do espaco (nao sao IDs): ${JSON.stringify(nameContext)}`,
+                  `Catalogo do espaco (nomes, nao IDs): ${JSON.stringify(nameContext)}`,
               },
               isImage
                 ? { type: "input_image", image_url: signed.data.signedUrl, detail: "high" }
@@ -442,7 +497,10 @@ async function handleDocumentInterpret(request: Request, env: unknown): Promise<
         entities: (entities.data ?? []).map((row) => ({
           id: row.id,
           name: row.name,
+          slug: row.slug,
           active: row.active !== false,
+          description: row.description ?? null,
+          ai_keywords: row.ai_keywords ?? null,
         })),
         categories: (categories.data ?? [])
           .filter((row) => row.kind === "income" || row.kind === "expense")
@@ -451,6 +509,8 @@ async function handleDocumentInterpret(request: Request, env: unknown): Promise<
             name: row.name,
             kind: row.kind as "income" | "expense",
             active: row.active !== false,
+            description: row.description ?? null,
+            ai_keywords: row.ai_keywords ?? null,
           })),
         accounts: (accounts.data ?? []).map((row) => ({
           id: row.id,

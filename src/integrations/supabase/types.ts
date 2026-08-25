@@ -224,8 +224,10 @@ export type Database = {
       categories: {
         Row: {
           active: boolean
+          ai_keywords: string[] | null
           color: string
           created_at: string
+          description: string | null
           id: string
           is_demo: boolean
           kind: string
@@ -235,8 +237,10 @@ export type Database = {
         }
         Insert: {
           active?: boolean
+          ai_keywords?: string[] | null
           color?: string
           created_at?: string
+          description?: string | null
           id?: string
           is_demo?: boolean
           kind?: string
@@ -246,8 +250,10 @@ export type Database = {
         }
         Update: {
           active?: boolean
+          ai_keywords?: string[] | null
           color?: string
           created_at?: string
+          description?: string | null
           id?: string
           is_demo?: boolean
           kind?: string
@@ -704,8 +710,10 @@ export type Database = {
       financial_entities: {
         Row: {
           active: boolean
+          ai_keywords: string[] | null
           color: string
           created_at: string
+          description: string | null
           id: string
           is_demo: boolean
           kind: string
@@ -716,8 +724,10 @@ export type Database = {
         }
         Insert: {
           active?: boolean
+          ai_keywords?: string[] | null
           color?: string
           created_at?: string
+          description?: string | null
           id?: string
           is_demo?: boolean
           kind?: string
@@ -728,8 +738,10 @@ export type Database = {
         }
         Update: {
           active?: boolean
+          ai_keywords?: string[] | null
           color?: string
           created_at?: string
+          description?: string | null
           id?: string
           is_demo?: boolean
           kind?: string
@@ -1490,11 +1502,34 @@ export type Database = {
       }
       delete_reserve: { Args: { p_id: string }; Returns: string }
       create_category: {
-        Args: { p_name: string; p_kind: string; p_color: string }
+        Args: {
+          p_name: string
+          p_kind: string
+          p_color: string
+          p_description?: string | null
+          p_ai_keywords?: string[] | null
+        }
         Returns: string
       }
       update_category: {
-        Args: { p_id: string; p_name: string; p_kind: string; p_color: string }
+        Args: {
+          p_id: string
+          p_name: string
+          p_kind: string
+          p_color: string
+          p_description?: string | null
+          p_ai_keywords?: string[] | null
+        }
+        Returns: string
+      }
+      update_financial_entity: {
+        Args: {
+          p_id: string
+          p_name: string
+          p_color: string
+          p_description?: string | null
+          p_ai_keywords?: string[] | null
+        }
         Returns: string
       }
       toggle_category_active: { Args: { p_id: string }; Returns: boolean }
