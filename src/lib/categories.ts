@@ -376,6 +376,15 @@ export function acceptedEntityId(match: SemanticMatch): string | null {
   return match.id;
 }
 
+export const MIN_CATEGORY_TEXT_CONFIDENCE = 0.6;
+
+export function acceptedCategoryId(match: SemanticMatch): string | null {
+  if (match.ambiguous || !match.id) return null;
+  if (match.source === "fallback" || match.source === "none" || match.source === "preferred") return null;
+  if (match.confidence < MIN_CATEGORY_TEXT_CONFIDENCE) return null;
+  return match.id;
+}
+
 const MAX_AI_PAYLOAD_DESCRIPTION = 120;
 const MAX_AI_PAYLOAD_KEYWORDS = 8;
 

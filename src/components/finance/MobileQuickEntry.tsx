@@ -10,12 +10,14 @@ import type { UploadedDocument } from "./QuickDocumentUpload";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { brl, type TxKind } from "@/lib/finance";
-import { acceptedEntityId, compactAiCategory, compactAiEntity, matchEntityRecord, resolveCategoryId, resolveCategoryMatch, selectableCategories } from "@/lib/categories";
+import { compactAiCategory, compactAiEntity, selectableCategories } from "@/lib/categories";
 import { isValidDateIso, localDateIso, parseLooseDate } from "@/lib/date";
 import { parseBRLMoney, roundMoney } from "@/lib/money";
 import { newIdempotencyKey } from "@/lib/idempotency";
 import { rpcErrorMessage } from "@/lib/rpc-error";
+import { resolveQuickEntryFields, type QuickEntryResolution } from "@/lib/semantic-rules";
 import { DocumentReviewDialog } from "./DocumentReviewDialog";
+import { DisambiguationDialog } from "./DisambiguationDialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   requestDocumentInterpretation,
@@ -36,6 +38,11 @@ type Draft = {
   documentDate?: string | null;
   vendor?: string | null;
   pending?: boolean;
+};
+
+type PendingDisambiguation = {
+  draft: Draft;
+  resolution: QuickEntryResolution;
 };
 
 type Props = {
@@ -121,8 +128,49 @@ export function MobileQuickEntry({ documents = [] }: Props) {
   const [saving, setSaving] = useState(false);
   const [interpreting, setInterpreting] = useState(false);
   const [review, setReview] = useState<{ documentId: string; suggestion: ResolvedDocumentSuggestion } | null>(null);
+  const [pending, setPending] = useState<PendingDisambiguation | null>(null);
   const recognitionRef = useRef<InstanceType<SpeechRecognitionCtor> | null>(null);
   const idempotencyKeyRef = useRef<string | null>(null);
+
+  const learnedRules = useMemo(
+    () => (data.semanticRules ?? []).filter((rule) => rule.active !== false),
+    [data.semanticRules],
+  );
+
+  const resolveFields = (originalText: string, kind: Draft["kind"], categoryHint?: string | null) =>
+    resolveQuickEntryFields({
+      text: originalText,
+      kind,
+      entities: data.entities,
+      categories: selectableCategories(data.categories, kind),
+      rules: learnedRules,
+      preferredEntityId: selectedEntityId !== "all" ? selectedEntityId : null,
+      categoryHint: categoryHint ?? originalText,
+    });
+
+  const accountForEntity = (entityId: string | null, preferredAccountId?: string | null) => {
+    if (!entityId) return null;
+    const preferred = preferredAccountId
+      ? data.accounts.find((account) => account.id === preferredAccountId && account.entity_id === entityId && account.active)
+      : undefined;
+    const next = preferred
+      ?? data.accounts.find((account) => account.entity_id === entityId && account.active)
+      ?? data.accounts.find((account) => account.entity_id === entityId);
+    return next?.id ?? null;
+  };
+
+  const presentDraft = (result: Draft, resolution: QuickEntryResolution) => {
+    if (resolution.appliedRule?.id) {
+      void supabase.rpc("touch_finance_semantic_rule_usage", { p_id: resolution.appliedRule.id });
+    }
+    if (resolution.needsEntity || resolution.needsCategory) {
+      setDraft(null);
+      setPending({ draft: result, resolution });
+      return;
+    }
+    setPending(null);
+    setDraft(result);
+  };
 
   const speechSupported = useMemo(
     () => typeof window !== "undefined" && Boolean(window.SpeechRecognition || window.webkitSpeechRecognition),
@@ -141,35 +189,28 @@ export function MobileQuickEntry({ documents = [] }: Props) {
     document_date?: string | null;
     vendor?: string | null;
     confidence?: number;
-  }, originalText: string): Draft | null => {
+  }, originalText: string): { draft: Draft; resolution: QuickEntryResolution } | null => {
     if (!ai?.kind || !ai.amount || Number(ai.amount) <= 0 || (ai.confidence ?? 0) < 0.5) return null;
-    const preferredEntityId = selectedEntityId !== "all" ? selectedEntityId : null;
-    const entityMatch = matchEntityRecord(data.entities, originalText, preferredEntityId);
-    const entityId = acceptedEntityId(entityMatch);
-    const entity = entityId ? data.entities.find((e) => e.id === entityId) : undefined;
-    const categoryId = resolveCategoryId(
-      data.categories,
+    const resolved = resolveFields(
+      originalText,
       ai.kind,
-      null,
       `${ai.category_name ?? ""} ${ai.description ?? ""} ${ai.vendor ?? ""} ${originalText}`,
     );
-    const account = entity
-      ? data.accounts.find((a) => a.id === ai.account_id && a.entity_id === entity.id && a.active)
-        ?? data.accounts.find((a) => a.entity_id === entity.id && a.active)
-        ?? data.accounts.find((a) => a.entity_id === entity.id)
-      : undefined;
     return {
-      kind: ai.kind,
-      amount: roundMoney(Number(ai.amount)),
-      entityId: entity?.id ?? null,
-      categoryId,
-      accountId: account?.id ?? null,
-      description: ai.description?.trim() || ai.vendor?.trim() || originalText || "Documento financeiro",
-      originalText,
-      parser: "openai",
-      documentDate: parseLooseDate(typeof ai.document_date === "string" ? ai.document_date : null),
-      vendor: ai.vendor ?? null,
-      pending: inferPending(originalText, ai.kind),
+      resolution: resolved,
+      draft: {
+        kind: ai.kind,
+        amount: roundMoney(Number(ai.amount)),
+        entityId: resolved.entityId,
+        categoryId: resolved.categoryId,
+        accountId: accountForEntity(resolved.entityId, ai.account_id),
+        description: ai.description?.trim() || ai.vendor?.trim() || originalText || "Documento financeiro",
+        originalText,
+        parser: "openai",
+        documentDate: parseLooseDate(typeof ai.document_date === "string" ? ai.document_date : null),
+        vendor: ai.vendor ?? resolved.originalHint ?? null,
+        pending: inferPending(originalText, ai.kind),
+      },
     };
   };
 
@@ -178,18 +219,8 @@ export function MobileQuickEntry({ documents = [] }: Props) {
     const amount = installment?.installmentAmount ?? parseAmount(originalText);
     if (!amount) return null;
     const kind = inferKind(originalText);
-    const preferredEntityId = selectedEntityId !== "all" ? selectedEntityId : null;
-    const entityMatch = matchEntityRecord(data.entities, originalText, preferredEntityId);
-    const entityId = acceptedEntityId(entityMatch);
-    const entity = entityId ? data.entities.find((e) => e.id === entityId) : undefined;
-    const account = entity
-      ? data.accounts.find((a) => a.entity_id === entity.id && a.active) ?? data.accounts.find((a) => a.entity_id === entity.id)
-      : undefined;
-
-    const categoryText = removeEntityMention(originalText, entity?.name);
-    const categories = selectableCategories(data.categories, kind);
-    const categoryMatch = resolveCategoryMatch(categories, kind, categoryText);
-    const categoryId = categoryMatch.ambiguous ? null : categoryMatch.id;
+    const resolved = resolveFields(originalText, kind);
+    const entity = resolved.entityId ? data.entities.find((item) => item.id === resolved.entityId) : undefined;
 
     let stripped = originalText;
     if (installment) stripped = stripped.replace(installment.matchedText, "");
@@ -198,17 +229,24 @@ export function MobileQuickEntry({ documents = [] }: Props) {
     if (entity?.name) stripped = removeEntityMention(stripped, entity.name);
 
     const result: Draft = {
-      kind, amount, entityId: entity?.id ?? null, categoryId, accountId: account?.id ?? null,
-      description: stripped || (kind === "income" ? "Entrada rápida" : "Saída rápida"),
-      originalText, parser: "local", ...(installment ? { installmentCount: installment.count, totalAmount: installment.totalAmount } : {}),
-      vendor: stripped || null,
+      kind,
+      amount,
+      entityId: resolved.entityId,
+      categoryId: resolved.categoryId,
+      accountId: accountForEntity(resolved.entityId),
+      description: stripped || resolved.originalHint || (kind === "income" ? "Entrada rápida" : "Saída rápida"),
+      originalText,
+      parser: "local",
+      ...(installment ? { installmentCount: installment.count, totalAmount: installment.totalAmount } : {}),
+      vendor: stripped || resolved.originalHint || null,
       pending: inferPending(originalText, kind),
     };
-    const confident = !categoryMatch.ambiguous && categoryMatch.confidence >= 0.8;
-    return { result, confident };
+    const skipAi = (!resolved.needsEntity && !resolved.needsCategory)
+      || (!resolved.needsCategory && resolved.categoryMatch.confidence >= 0.8);
+    return { result, resolved, skipAi };
   };
 
-  const aiInterpret = async (originalText: string): Promise<Draft | null> => {
+  const aiInterpret = async (originalText: string) => {
     const { data: sessionData } = await supabase.auth.getSession();
     const token = sessionData.session?.access_token;
     if (!token) return null;
@@ -249,6 +287,8 @@ export function MobileQuickEntry({ documents = [] }: Props) {
     if (!originalText && !documents.length) { toast.error("Digite, fale ou anexe um documento."); return; }
     if (!documents.length && !parseAmount(originalText)) { toast.error("Não encontrei o valor. Ex.: gastei 180 combustível."); return; }
 
+    setPending(null);
+    setDraft(null);
     setInterpreting(true);
     if (documents.length) {
       try {
@@ -275,15 +315,15 @@ export function MobileQuickEntry({ documents = [] }: Props) {
     }
 
     const local = localInterpret(originalText);
-    if (local?.confident) {
-      setDraft(local.result);
+    if (local?.skipAi) {
+      presentDraft(local.result, local.resolved);
       setInterpreting(false);
       return;
     }
     try {
       const ai = await aiInterpret(originalText);
       if (ai) {
-        setDraft(ai);
+        presentDraft(ai.draft, ai.resolution);
         setInterpreting(false);
         return;
       }
@@ -292,7 +332,7 @@ export function MobileQuickEntry({ documents = [] }: Props) {
     }
     setInterpreting(false);
     if (local?.result) {
-      setDraft(local.result);
+      presentDraft(local.result, local.resolved);
       toast.message("Usei a interpretação local. Confira antes de confirmar.");
       return;
     }
@@ -372,7 +412,6 @@ export function MobileQuickEntry({ documents = [] }: Props) {
     refresh();
   };
 
-  const category = draft ? data.categories.find((c) => c.id === draft.categoryId) : null;
   const account = draft ? data.accounts.find((a) => a.id === draft.accountId) : null;
 
   return (
@@ -394,6 +433,53 @@ export function MobileQuickEntry({ documents = [] }: Props) {
             setReview(null);
             setText("");
             refresh();
+          }}
+        />
+      ) : null}
+
+      {pending ? (
+        <DisambiguationDialog
+          key={`${pending.draft.originalText}-${pending.draft.amount}`}
+          open
+          amount={pending.draft.amount}
+          kind={pending.draft.kind}
+          hint={pending.resolution.originalHint || pending.draft.vendor || pending.draft.description}
+          categoryName={data.categories.find((item) => item.id === pending.draft.categoryId)?.name ?? null}
+          needsEntity={pending.resolution.needsEntity}
+          needsCategory={pending.resolution.needsCategory}
+          entities={data.entities}
+          categories={selectableCategories(data.categories, pending.draft.kind)}
+          suggestedEntityId={pending.resolution.partialRules.find((rule) => rule.entity_id)?.entity_id ?? pending.draft.entityId}
+          suggestedCategoryId={pending.resolution.partialRules.find((rule) => rule.category_id)?.category_id ?? pending.draft.categoryId}
+          canRemember={canWrite && pending.resolution.hint.length >= 3}
+          onCancel={() => setPending(null)}
+          onComplete={(choice) => {
+            const entityId = pending.resolution.needsEntity ? choice.entityId : pending.draft.entityId;
+            const categoryId = pending.resolution.needsCategory ? choice.categoryId : pending.draft.categoryId;
+            if (choice.remember && canWrite && pending.resolution.hint.length >= 3) {
+              const args: {
+                p_normalized_hint: string;
+                p_original_hint: string;
+                p_entity_id?: string;
+                p_category_id?: string;
+              } = {
+                p_normalized_hint: pending.resolution.hint,
+                p_original_hint: pending.resolution.originalHint || pending.resolution.hint,
+              };
+              if (entityId) args.p_entity_id = entityId;
+              if (categoryId) args.p_category_id = categoryId;
+              void supabase.rpc("upsert_finance_semantic_rule", args).then(({ error }) => {
+                if (error) toast.error(rpcErrorMessage(error, "Não consegui lembrar esta escolha."));
+                else refresh();
+              });
+            }
+            setPending(null);
+            setDraft({
+              ...pending.draft,
+              entityId,
+              categoryId,
+              accountId: accountForEntity(entityId, pending.draft.accountId),
+            });
           }}
         />
       ) : null}
@@ -442,7 +528,20 @@ export function MobileQuickEntry({ documents = [] }: Props) {
                 <p className="mt-1 text-[11px] text-muted-foreground">O texto não indicou a entidade. Escolha antes de confirmar.</p>
               ) : null}
             </div>
-            <div><span className="block text-[11px] text-muted-foreground">Categoria</span><strong>{category?.name ?? "Sem categoria"}</strong></div>
+            <div>
+              <span className="block text-[11px] text-muted-foreground">Categoria</span>
+              <Select
+                value={draft.categoryId ?? ""}
+                onValueChange={(value) => setDraft({ ...draft, categoryId: value })}
+              >
+                <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Selecione a categoria" /></SelectTrigger>
+                <SelectContent>
+                  {selectableCategories(data.categories, draft.kind).map((item) => (
+                    <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div><span className="block text-[11px] text-muted-foreground">Status</span><strong>{draft.pending ? (draft.kind === "income" ? "A receber" : "A pagar") : "Liquidado"}</strong></div>
             <div><span className="block text-[11px] text-muted-foreground">Data</span><strong>{draft.documentDate ?? "Hoje"}</strong></div>
             {draft.vendor ? <div className="col-span-2"><span className="block text-[11px] text-muted-foreground">Documento / fornecedor</span><strong>{draft.vendor}</strong></div> : null}
@@ -450,7 +549,7 @@ export function MobileQuickEntry({ documents = [] }: Props) {
             <div className="col-span-2"><span className="block text-[11px] text-muted-foreground">Conta</span><strong>{account?.name ?? "—"}</strong></div>
           </div>
           <div className="mt-4 grid grid-cols-2 gap-2">
-            <Button variant="ghost" className="gap-2" onClick={() => setDraft(null)}><RotateCcw className="size-4" /> Corrigir</Button>
+            <Button variant="ghost" className="gap-2" onClick={() => { setDraft(null); setPending(null); }}><RotateCcw className="size-4" /> Corrigir</Button>
             <Button className="gap-2" disabled={saving || !canWrite || !draft.entityId} onClick={confirm}><Check className="size-4" /> {saving ? "Salvando..." : "Confirmar"}</Button>
           </div>
         </div>

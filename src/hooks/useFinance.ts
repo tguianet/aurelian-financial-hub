@@ -37,6 +37,7 @@ function preferPrivateData(data: FinanceDataset): FinanceDataset {
     insights: data.insights.filter(
       (i) => !i.is_demo && (i.entity_id === null || entityIds.has(i.entity_id)),
     ),
+    semanticRules: data.semanticRules ?? [],
   };
 }
 
@@ -62,6 +63,7 @@ async function fetchAll(): Promise<FinanceDataset> {
     reserves,
     recurring,
     insights,
+    semanticRulesResult,
   ] = await Promise.all([
     supabase.from("financial_entities").select("*").order("kind").order("name"),
     supabase.from("accounts").select("*").order("name"),
@@ -81,6 +83,7 @@ async function fetchAll(): Promise<FinanceDataset> {
     supabase.from("reserves").select("*").order("name"),
     supabase.from("recurring_transactions").select("*").order("description"),
     supabase.from("ai_insights").select("*").order("created_at", { ascending: false }),
+    supabase.from("finance_semantic_rules").select("*").order("updated_at", { ascending: false }),
   ]);
 
   let categoryRows = (categories.data ?? []) as FinanceDataset["categories"];
@@ -123,6 +126,9 @@ async function fetchAll(): Promise<FinanceDataset> {
     reserves: (reserves.data ?? []) as FinanceDataset["reserves"],
     recurring: (recurring.data ?? []) as FinanceDataset["recurring"],
     insights: (insights.data ?? []) as FinanceDataset["insights"],
+    semanticRules: semanticRulesResult.error
+      ? []
+      : ((semanticRulesResult.data ?? []) as FinanceDataset["semanticRules"]),
   };
 
   return preferPrivateData(dataset);

@@ -27,6 +27,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { clipAiDescription, formatKeywordInput, normalizeCategoryName, parseKeywordInput } from "@/lib/categories";
 import { Textarea } from "@/components/ui/textarea";
 import type { Category } from "@/lib/finance";
+import { SemanticLearningSection } from "@/components/finance/SemanticLearningSection";
 
 export const Route = createFileRoute("/_authenticated/categorias")({
   head: () =>
@@ -385,6 +386,8 @@ function Categorias() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <SemanticLearningSection />
     </div>
   );
 }

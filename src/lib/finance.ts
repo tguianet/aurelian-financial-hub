@@ -191,6 +191,23 @@ export interface AiInsight {
   is_demo: boolean;
 }
 
+export type SemanticRuleType = "entity" | "category" | "entity_category";
+
+export interface SemanticRule {
+  id: string;
+  space_id: string;
+  user_id: string;
+  rule_type: SemanticRuleType;
+  normalized_hint: string;
+  original_hint: string | null;
+  entity_id: string | null;
+  category_id: string | null;
+  usage_count: number;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface FinanceDataset {
   entities: FinancialEntity[];
   accounts: Account[];
@@ -203,6 +220,7 @@ export interface FinanceDataset {
   reserves: Reserve[];
   recurring: RecurringTransaction[];
   insights: AiInsight[];
+  semanticRules: SemanticRule[];
 }
 
 export const emptyDataset: FinanceDataset = {
@@ -217,6 +235,7 @@ export const emptyDataset: FinanceDataset = {
   reserves: [],
   recurring: [],
   insights: [],
+  semanticRules: [],
 };
 
 /* ---------------- helpers ---------------- */

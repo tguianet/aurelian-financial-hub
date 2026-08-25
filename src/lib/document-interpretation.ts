@@ -1,7 +1,9 @@
 import { z } from "zod";
 import { isValidDateIso, parseLooseDate } from "./date";
 import { parseBRLMoney, roundMoney } from "./money";
-import { acceptedEntityId, blendSemanticConfidence, matchEntityRecord, resolveCategoryMatch } from "./categories";
+import { acceptedEntityId, blendSemanticConfidence, matchEntityRecord } from "./categories";
+import type { SemanticRule } from "./finance";
+import { resolveQuickEntryFields } from "./semantic-rules";
 
 export const DOCUMENT_INTERPRETATION_VERSION = 1;
 
@@ -215,6 +217,7 @@ export function resolveDocumentSuggestion(
     categories: Array<{ id: string; name: string; kind: "income" | "expense"; active?: boolean; description?: string | null; ai_keywords?: string[] | null }>;
     accounts: Array<{ id: string; entity_id: string; active?: boolean }>;
     preferredEntityId?: string | null;
+    semanticRules?: Array<Pick<SemanticRule, "id" | "normalized_hint" | "original_hint" | "entity_id" | "category_id" | "active" | "rule_type">>;
   },
 ): ResolvedDocumentSuggestion {
   const parsed = parseAiDocumentSuggestion(raw);
@@ -225,26 +228,17 @@ export function resolveDocumentSuggestion(
   const categoryName = stripInventedIds(parsed.category_name);
   const entityName = stripInventedIds(parsed.entity_name);
   const categoryHint = `${categoryName ?? ""} ${parsed.description ?? ""}`;
-  const categoryMatch = resolveCategoryMatch(
-    context.categories.map((category) => ({
-      id: category.id,
-      name: category.name,
-      kind: category.kind,
-      active: category.active !== false,
-      description: category.description ?? null,
-      ai_keywords: category.ai_keywords ?? null,
-    })),
+  const fields = resolveQuickEntryFields({
+    text: [entityName, parsed.description].filter(Boolean).join(" "),
     kind,
+    entities: context.entities,
+    categories: context.categories,
+    rules: (context.semanticRules ?? []).filter((rule) => rule.active !== false),
     categoryHint,
-  );
-  const categoryId = categoryMatch.ambiguous ? null : categoryMatch.id;
-
-  const entityMatch = matchEntityByName(
-    context.entities,
-    entityName,
-    null,
-    parsed.description,
-  );
+  });
+  const categoryMatch = fields.categoryMatch;
+  const categoryId = fields.categoryId;
+  const entityId = fields.entityId;
   const competence = parseLooseDate(parsed.competence_date ?? null);
   const due = parseLooseDate(parsed.due_date ?? null) ?? competence;
   if (competence && !isValidDateIso(competence)) throw new Error("date_invalid");
@@ -269,9 +263,9 @@ export function resolveDocumentSuggestion(
     notes: parsed.notes?.trim() ? parsed.notes.trim().slice(0, 240) : null,
     possible_recurring: Boolean(parsed.possible_recurring),
     category_id: categoryId,
-    entity_id: entityMatch.id,
-    account_id: pickAccountForEntity(context.accounts, entityMatch.id),
-    ambiguous_entity: entityMatch.ambiguous,
+    entity_id: entityId,
+    account_id: pickAccountForEntity(context.accounts, entityId),
+    ambiguous_entity: fields.entityMatch.ambiguous,
     ambiguous_category: categoryMatch.ambiguous,
   };
 }

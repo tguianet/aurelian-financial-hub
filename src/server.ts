@@ -382,10 +382,11 @@ async function handleDocumentInterpret(request: Request, env: unknown): Promise<
     return json({ error_code: "signed_url_failed", message: "Não consegui preparar o arquivo para leitura." }, 502);
   }
 
-  const [entities, categories, accounts] = await Promise.all([
+  const [entities, categories, accounts, semanticRules] = await Promise.all([
     supabase.from("financial_entities").select("id, name, slug, active, description, ai_keywords").eq("is_demo", false),
     supabase.from("categories").select("id, name, kind, active, description, ai_keywords").eq("is_demo", false),
     supabase.from("accounts").select("id, entity_id, active").eq("is_demo", false),
+    supabase.from("finance_semantic_rules").select("id, normalized_hint, original_hint, entity_id, category_id, active, rule_type").eq("active", true),
   ]);
 
   const apiKey = envValue(env, "OPENAI_API_KEY");
@@ -514,6 +515,12 @@ async function handleDocumentInterpret(request: Request, env: unknown): Promise<
           active: row.active !== false,
         })),
         preferredEntityId: typeof body.selected_entity_id === "string" ? body.selected_entity_id : null,
+        semanticRules: semanticRules.error
+          ? []
+          : (semanticRules.data ?? []).map((row) => ({
+              ...row,
+              rule_type: row.rule_type as "entity" | "category" | "entity_category",
+            })),
       });
     } catch {
       return await fail("ai_invalid_amount", "Não identifiquei um valor ou data válida no documento.", 422);

@@ -601,6 +601,73 @@ export type Database = {
         }
         Relationships: []
       }
+      finance_semantic_rules: {
+        Row: {
+          active: boolean
+          category_id: string | null
+          created_at: string
+          entity_id: string | null
+          id: string
+          normalized_hint: string
+          original_hint: string | null
+          rule_type: string
+          space_id: string
+          updated_at: string
+          usage_count: number
+          user_id: string
+        }
+        Insert: {
+          active?: boolean
+          category_id?: string | null
+          created_at?: string
+          entity_id?: string | null
+          id?: string
+          normalized_hint: string
+          original_hint?: string | null
+          rule_type: string
+          space_id: string
+          updated_at?: string
+          usage_count?: number
+          user_id: string
+        }
+        Update: {
+          active?: boolean
+          category_id?: string | null
+          created_at?: string
+          entity_id?: string | null
+          id?: string
+          normalized_hint?: string
+          original_hint?: string | null
+          rule_type?: string
+          space_id?: string
+          updated_at?: string
+          usage_count?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "finance_semantic_rules_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "finance_semantic_rules_entity_id_fkey"
+            columns: ["entity_id"]
+            isOneToOne: false
+            referencedRelation: "financial_entities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "finance_semantic_rules_space_id_fkey"
+            columns: ["space_id"]
+            isOneToOne: false
+            referencedRelation: "finance_spaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       financial_documents: {
         Row: {
           confirm_idempotency_key: string | null
@@ -1473,7 +1540,12 @@ export type Database = {
       }
       current_finance_space_id: { Args: never; Returns: string }
       delete_budget: { Args: { p_id: string }; Returns: string }
+      delete_finance_semantic_rule: { Args: { p_id: string }; Returns: string }
       delete_reserve: { Args: { p_id: string }; Returns: string }
+      derive_finance_semantic_rule_type: {
+        Args: { p_category_id: string; p_entity_id: string }
+        Returns: string
+      }
       end_recurring_transaction: {
         Args: { p_ends_at?: string; p_id: string }
         Returns: string
@@ -1582,6 +1654,7 @@ export type Database = {
         Returns: string
       }
       normalize_category_name: { Args: { p_name: string }; Returns: string }
+      normalize_finance_semantic_hint: { Args: { p_text: string }; Returns: string }
       pause_recurring_transaction: { Args: { p_id: string }; Returns: boolean }
       pay_credit_card_bill: {
         Args: {
@@ -1663,10 +1736,12 @@ export type Database = {
       }
       toggle_account_active: { Args: { p_id: string }; Returns: boolean }
       toggle_category_active: { Args: { p_id: string }; Returns: boolean }
+      toggle_finance_semantic_rule_active: { Args: { p_id: string }; Returns: boolean }
       toggle_financial_entity_active: {
         Args: { p_id: string }
         Returns: boolean
       }
+      touch_finance_semantic_rule_usage: { Args: { p_id: string }; Returns: number }
       update_category: {
         Args: {
           p_ai_keywords?: string[]
@@ -1685,6 +1760,17 @@ export type Database = {
           p_description?: string
           p_id: string
           p_name: string
+        }
+        Returns: string
+      }
+      update_finance_semantic_rule: {
+        Args: {
+          p_active?: boolean
+          p_category_id?: string
+          p_entity_id?: string
+          p_id: string
+          p_normalized_hint?: string
+          p_original_hint?: string
         }
         Returns: string
       }
@@ -1718,6 +1804,15 @@ export type Database = {
           p_entity_id: string
           p_month: string
           p_planned_amount: number
+        }
+        Returns: string
+      }
+      upsert_finance_semantic_rule: {
+        Args: {
+          p_category_id?: string
+          p_entity_id?: string
+          p_normalized_hint: string
+          p_original_hint?: string
         }
         Returns: string
       }

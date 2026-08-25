@@ -31,6 +31,10 @@ const WRITE_RPCS = [
   "set_financial_document_status",
   "link_financial_document",
   "mark_financial_document_failed",
+  "upsert_finance_semantic_rule",
+  "update_finance_semantic_rule",
+  "toggle_finance_semantic_rule_active",
+  "delete_finance_semantic_rule",
 ] as const;
 
 const AUDIT_ACTIONS = [
@@ -51,7 +55,7 @@ export function runAuditIntegrityChecks() {
   assert(keyA !== keyB, "T4 chaves de idempotência distintas");
   assert(/^[0-9a-f-]{36}$/i.test(keyA), "T4 UUID de idempotência");
 
-  assert(WRITE_RPCS.length === 26, "contrato de RPCs de escrita");
+  assert(WRITE_RPCS.length === 30, "contrato de RPCs de escrita");
   assert(AUDIT_ACTIONS.includes("cancel") && AUDIT_ACTIONS.includes("settle"), "ações padrão");
   assert(DOCUMENT_STATES.includes("interpreted") && !(DOCUMENT_STATES as readonly string[]).includes("processed"), "T11 estados de documento");
 

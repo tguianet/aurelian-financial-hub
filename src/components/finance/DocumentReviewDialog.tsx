@@ -12,6 +12,8 @@ import { selectableCategories } from "@/lib/categories";
 import { isValidDateIso, localDateIso } from "@/lib/date";
 import { parseBRLMoney } from "@/lib/money";
 import { rpcErrorMessage } from "@/lib/rpc-error";
+import { extractSemanticHint } from "@/lib/semantic-rules";
+import { Checkbox } from "@/components/ui/checkbox";
 import type { PaymentMethod, ResolvedDocumentSuggestion } from "@/lib/document-interpretation";
 import { PAYMENT_METHODS } from "@/lib/document-interpretation";
 import { PAYMENT_LABEL } from "@/lib/finance";
@@ -40,6 +42,7 @@ export function DocumentReviewDialog({ open, documentId, suggestion, onOpenChang
   const [due, setDue] = useState(suggestion.due_date ?? suggestion.competence_date ?? localDateIso());
   const [status, setStatus] = useState("paid");
   const [installments, setInstallments] = useState("1");
+  const [remember, setRemember] = useState(false);
 
   const categories = useMemo(() => selectableCategories(data.categories, kind), [data.categories, kind]);
   const accounts = data.accounts.filter((account) => account.active && (!entityId || account.entity_id === entityId));
@@ -57,6 +60,25 @@ export function DocumentReviewDialog({ open, documentId, suggestion, onOpenChang
     if (isCredit && !cardId) { toast.error("Selecione o cartão."); return; }
     if (!isCredit && !accountId) { toast.error("Selecione a conta."); return; }
     const count = Math.max(1, Number(installments) || 1);
+    const hint = extractSemanticHint([suggestion.entity_name, suggestion.description, description].filter(Boolean).join(" "));
+
+    if (remember && canWrite && hint.normalized.length >= 3) {
+      const args: {
+        p_normalized_hint: string;
+        p_original_hint: string;
+        p_entity_id?: string;
+        p_category_id?: string;
+      } = {
+        p_normalized_hint: hint.normalized,
+        p_original_hint: hint.original,
+      };
+      if (entityId) args.p_entity_id = entityId;
+      if (categoryId) args.p_category_id = categoryId;
+      const learned = await supabase.rpc("upsert_finance_semantic_rule", args);
+      if (learned.error) {
+        toast.error(rpcErrorMessage(learned.error, "Não consegui lembrar esta escolha."));
+      }
+    }
 
     setBusy(true);
     const { data: rows, error } = await supabase.rpc("confirm_financial_document_transaction", {
@@ -205,6 +227,17 @@ export function DocumentReviewDialog({ open, documentId, suggestion, onOpenChang
             </Field>
           )}
         </div>
+
+        {canWrite && extractSemanticHint([suggestion.entity_name, suggestion.description, description].filter(Boolean).join(" ")).normalized.length >= 3 ? (
+          <label className="flex min-h-11 items-start gap-3 rounded-xl border border-border bg-background/60 px-3 py-2 text-sm">
+            <Checkbox
+              className="mt-0.5 size-5"
+              checked={remember}
+              onCheckedChange={(value) => setRemember(value === true)}
+            />
+            <span>Lembrar esta escolha para lançamentos parecidos</span>
+          </label>
+        ) : null}
 
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>Corrigir depois</Button>
