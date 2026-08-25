@@ -74,7 +74,7 @@ export function DocumentReviewDialog({ open, documentId, suggestion, onOpenChang
       p_notes: suggestion.notes ?? undefined,
       p_credit_card_id: isCredit ? cardId : undefined,
       p_installments: isCredit ? count : 1,
-    });
+    } as never);
     setBusy(false);
     if (error) {
       toast.error(rpcErrorMessage(error, "Não foi possível confirmar o lançamento."));

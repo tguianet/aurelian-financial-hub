@@ -72,7 +72,7 @@ function Recorrencias() {
 
   const pause = async (id: string) => {
     if (!canWrite) { toast.error("Seu acesso é somente leitura."); return; }
-    const { error } = await supabase.rpc("pause_recurring_transaction", { p_id: id });
+    const { error } = await supabase.rpc("pause_recurring_transaction", { p_id: id } as never);
     if (error) { toast.error(error.message); return; }
     toast.success("Recorrência pausada. Ocorrências já geradas foram mantidas.");
     refresh();
@@ -80,7 +80,7 @@ function Recorrencias() {
 
   const resume = async (id: string) => {
     if (!canWrite) { toast.error("Seu acesso é somente leitura."); return; }
-    const { data: next, error } = await supabase.rpc("resume_recurring_transaction", { p_id: id });
+    const { data: next, error } = await supabase.rpc("resume_recurring_transaction", { p_id: id } as never);
     if (error) { toast.error(error.message); return; }
     toast.success(`Retomada a partir de ${fmtDate(next)}. Sem geração retroativa.`);
     refresh();
@@ -88,7 +88,7 @@ function Recorrencias() {
 
   const end = async (id: string) => {
     if (!canWrite) { toast.error("Seu acesso é somente leitura."); return; }
-    const { error } = await supabase.rpc("end_recurring_transaction", { p_id: id, p_ends_at: todayIso() });
+    const { error } = await supabase.rpc("end_recurring_transaction", { p_id: id, p_ends_at: todayIso() } as never);
     if (error) { toast.error(error.message); return; }
     toast.success("Recorrência encerrada. O histórico permanece.");
     refresh();
@@ -294,7 +294,7 @@ function RecurringDialog({
 
     setBusy(true);
     const { error } = editing
-      ? await supabase.rpc("update_recurring_transaction", { p_id: editing.id, ...payload })
+      ? await supabase.rpc("update_recurring_transaction", { p_id: editing.id, ...payload } as never)
       : await supabase.rpc("create_recurring_transaction", payload);
     setBusy(false);
     if (error) { toast.error(error.message); return; }

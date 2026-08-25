@@ -110,7 +110,7 @@ export function TransactionDialog() {
         _total_amount: value,
         _purchase_date: competence,
         _installments: count,
-      });
+      } as never);
       setBusy(false);
       if (error) {
         toast.error(error.message);
@@ -145,7 +145,7 @@ export function TransactionDialog() {
         p_month_of_year: recurrence === "yearly" ? parseDateOnly(due).getMonth() + 1 : undefined,
         p_payment_method: method,
         p_notes: notes.trim() || undefined,
-      });
+      } as never);
       setBusy(false);
       if (error) {
         toast.error(error.message);
@@ -181,7 +181,7 @@ export function TransactionDialog() {
       p_shift_competence: false,
       p_source: "manual",
       p_idempotency_key: idempotencyKeyRef.current,
-    });
+    } as never);
     setBusy(false);
     if (error) {
       toast.error(rpcErrorMessage(error, "Não foi possível registrar o lançamento."));

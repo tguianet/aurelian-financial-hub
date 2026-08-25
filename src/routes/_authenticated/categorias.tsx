@@ -132,7 +132,7 @@ function Categorias() {
         p_color: color,
         p_description: clipAiDescription(description) ?? undefined,
         p_ai_keywords: parseKeywordInput(keywords),
-      });
+      } as never);
       setBusy(false);
       if (error) { toast.error(duplicateMessage(rpcErrorMessage(error, "Não foi possível atualizar a categoria."))); return; }
       toast.success("Categoria atualizada.");
@@ -143,7 +143,7 @@ function Categorias() {
         p_color: color,
         p_description: clipAiDescription(description) ?? undefined,
         p_ai_keywords: parseKeywordInput(keywords),
-      });
+      } as never);
       setBusy(false);
       if (error) { toast.error(duplicateMessage(rpcErrorMessage(error, "Não foi possível criar a categoria."))); return; }
       toast.success("Categoria criada.");
@@ -156,7 +156,7 @@ function Categorias() {
   const toggleActive = async (category: Category) => {
     if (!canWrite) { toast.error("Seu acesso é somente leitura."); return; }
     const next = category.active === false;
-    const { error } = await supabase.rpc("toggle_category_active", { p_id: category.id });
+    const { error } = await supabase.rpc("toggle_category_active", { p_id: category.id } as never);
     if (error) { toast.error(rpcErrorMessage(error, "Não foi possível atualizar a categoria.")); return; }
     toast.success(next ? "Categoria reativada." : "Categoria desativada. O histórico continua visível.");
     refresh();

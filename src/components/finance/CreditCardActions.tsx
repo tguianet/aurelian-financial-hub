@@ -77,7 +77,7 @@ function NewCardDialog() {
       p_due_day: due,
       p_account_id: accountId || undefined,
       p_brand: brand.trim() || undefined,
-    });
+    } as never);
     setBusy(false);
     if (error) {
       toast.error(rpcErrorMessage(error, "Não foi possível criar o cartão."));
@@ -179,7 +179,7 @@ export function NewPurchaseDialog({
       _total_amount: total,
       _purchase_date: purchaseDate,
       _installments: count,
-    });
+    } as never);
     setBusy(false);
 
     if (error) { toast.error(error.message); return; }

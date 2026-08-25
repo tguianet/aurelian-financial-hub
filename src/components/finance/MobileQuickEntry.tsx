@@ -352,7 +352,7 @@ export function MobileQuickEntry({ documents = [] }: Props) {
       p_shift_competence: installments > 1,
       p_source: source,
       p_idempotency_key: idempotencyKeyRef.current,
-    });
+    } as never);
     if (error || !txId) {
       setSaving(false);
       toast.error(rpcErrorMessage(error, "Não foi possível confirmar o lançamento."));
