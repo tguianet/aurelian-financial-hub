@@ -284,12 +284,12 @@ function RecurringDialog({
       p_amount: value,
       p_frequency: frequency,
       p_starts_at: startsAt,
-      p_day_of_month: frequency === "weekly" ? null : Number(dayOfMonth),
-      p_weekday: frequency === "weekly" ? Number(weekday) : null,
-      p_month_of_year: frequency === "yearly" ? Number(monthOfYear) : null,
-      p_ends_at: endsAt || null,
+      p_day_of_month: frequency === "weekly" ? undefined : Number(dayOfMonth),
+      p_weekday: frequency === "weekly" ? Number(weekday) : undefined,
+      p_month_of_year: frequency === "yearly" ? Number(monthOfYear) : undefined,
+      p_ends_at: endsAt || undefined,
       p_payment_method: method,
-      p_notes: notes.trim() || null,
+      p_notes: notes.trim() || undefined,
     };
 
     setBusy(true);

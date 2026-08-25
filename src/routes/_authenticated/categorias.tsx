@@ -130,7 +130,7 @@ function Categorias() {
         p_name: cleanName,
         p_kind: kind,
         p_color: color,
-        p_description: clipAiDescription(description),
+        p_description: clipAiDescription(description) ?? undefined,
         p_ai_keywords: parseKeywordInput(keywords),
       });
       setBusy(false);
@@ -141,7 +141,7 @@ function Categorias() {
         p_name: cleanName,
         p_kind: kind,
         p_color: color,
-        p_description: clipAiDescription(description),
+        p_description: clipAiDescription(description) ?? undefined,
         p_ai_keywords: parseKeywordInput(keywords),
       });
       setBusy(false);

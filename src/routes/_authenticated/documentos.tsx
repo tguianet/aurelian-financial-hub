@@ -101,8 +101,8 @@ function Documentos() {
     const { error } = await supabase.rpc("register_financial_document", {
       p_storage_path: path,
       p_file_name: fileName,
-      p_mime_type: null,
-      p_size_bytes: null,
+      p_mime_type: undefined,
+      p_size_bytes: undefined,
       p_source: "upload",
     });
     if (error) { toast.error(rpcErrorMessage(error, "Não foi possível recatalogar o arquivo.")); return; }

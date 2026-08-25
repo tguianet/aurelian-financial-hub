@@ -105,7 +105,7 @@ export function TransactionDialog() {
       const desc = notes.trim() ? `${description.trim()} — ${notes.trim()}` : description.trim();
       const { error } = await supabase.rpc("create_credit_card_purchase", {
         _credit_card_id: cardId,
-        _category_id: categoryId || null,
+        _category_id: categoryId || undefined,
         _description: desc,
         _total_amount: value,
         _purchase_date: competence,
@@ -140,11 +140,11 @@ export function TransactionDialog() {
         p_amount: value,
         p_frequency: recurrence,
         p_starts_at: due,
-        p_day_of_month: recurrence === "weekly" ? null : parseDateOnly(due).getDate(),
-        p_weekday: recurrence === "weekly" ? weekday : null,
-        p_month_of_year: recurrence === "yearly" ? parseDateOnly(due).getMonth() + 1 : null,
+        p_day_of_month: recurrence === "weekly" ? undefined : parseDateOnly(due).getDate(),
+        p_weekday: recurrence === "weekly" ? weekday : undefined,
+        p_month_of_year: recurrence === "yearly" ? parseDateOnly(due).getMonth() + 1 : undefined,
         p_payment_method: method,
-        p_notes: notes.trim() || null,
+        p_notes: notes.trim() || undefined,
       });
       setBusy(false);
       if (error) {
@@ -169,13 +169,13 @@ export function TransactionDialog() {
       p_kind: kind,
       p_description: description.trim(),
       p_amount: value,
-      p_category_id: kind === "transfer" ? null : categoryId || null,
-      p_to_account_id: kind === "transfer" ? toAccountId : null,
+      p_category_id: kind === "transfer" ? undefined : categoryId || undefined,
+      p_to_account_id: kind === "transfer" ? toAccountId : undefined,
       p_payment_method: kind === "transfer" ? "transfer" : method,
       p_competence_date: competence,
       p_due_date: due,
       p_status: status,
-      p_notes: notes.trim() || null,
+      p_notes: notes.trim() || undefined,
       p_installments: total,
       p_amount_mode: "total",
       p_shift_competence: false,

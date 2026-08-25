@@ -75,8 +75,8 @@ function NewCardDialog() {
       p_credit_limit: creditLimit,
       p_closing_day: close,
       p_due_day: due,
-      p_account_id: accountId || null,
-      p_brand: brand.trim() || null,
+      p_account_id: accountId || undefined,
+      p_brand: brand.trim() || undefined,
     });
     setBusy(false);
     if (error) {
@@ -174,7 +174,7 @@ export function NewPurchaseDialog({
     setBusy(true);
     const { error } = await supabase.rpc("create_credit_card_purchase", {
       _credit_card_id: cardId,
-      _category_id: categoryId || null,
+      _category_id: categoryId || undefined,
       _description: description.trim(),
       _total_amount: total,
       _purchase_date: purchaseDate,

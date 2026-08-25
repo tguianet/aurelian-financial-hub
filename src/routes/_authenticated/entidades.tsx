@@ -138,7 +138,7 @@ function Entidades() {
       p_id: editing.id,
       p_name: cleanName,
       p_color: color,
-      p_description: clipAiDescription(description),
+      p_description: clipAiDescription(description) ?? undefined,
       p_ai_keywords: parseKeywordInput(keywords),
     });
     setBusy(false);

@@ -72,8 +72,8 @@ function Reservas() {
       p_name: name.trim(),
       p_target_amount: goal,
       p_current_amount: currentValue,
-      p_account_id: accountId || null,
-      p_notes: notes.trim() || null,
+      p_account_id: accountId || undefined,
+      p_notes: notes.trim() || undefined,
     });
     setBusy(false);
     if (error) { toast.error(rpcErrorMessage(error, "Não foi possível criar a reserva.")); return; }
