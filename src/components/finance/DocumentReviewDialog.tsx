@@ -65,16 +65,16 @@ export function DocumentReviewDialog({ open, documentId, suggestion, onOpenChang
       p_kind: kind,
       p_description: description.trim(),
       p_amount: value,
-      p_account_id: isCredit ? null : accountId,
-      p_category_id: categoryId || null,
+      p_account_id: isCredit ? undefined : accountId,
+      p_category_id: categoryId || undefined,
       p_payment_method: isCredit ? "credit" : method,
       p_competence_date: competence,
       p_due_date: due,
       p_status: isCredit ? "pending" : status,
-      p_notes: suggestion.notes,
-      p_credit_card_id: isCredit ? cardId : null,
+      p_notes: suggestion.notes ?? undefined,
+      p_credit_card_id: isCredit ? cardId : undefined,
       p_installments: isCredit ? count : 1,
-    });
+    } as never);
     setBusy(false);
     if (error) {
       toast.error(rpcErrorMessage(error, "Não foi possível confirmar o lançamento."));

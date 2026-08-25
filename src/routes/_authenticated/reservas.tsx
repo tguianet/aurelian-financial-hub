@@ -72,9 +72,9 @@ function Reservas() {
       p_name: name.trim(),
       p_target_amount: goal,
       p_current_amount: currentValue,
-      p_account_id: accountId || null,
-      p_notes: notes.trim() || null,
-    });
+      p_account_id: accountId || undefined,
+      p_notes: notes.trim() || undefined,
+    } as never);
     setBusy(false);
     if (error) { toast.error(rpcErrorMessage(error, "Não foi possível criar a reserva.")); return; }
 
@@ -87,7 +87,7 @@ function Reservas() {
     if (!canWrite) { toast.error("Seu acesso é somente leitura."); return; }
     const amount = parseMoney(value);
     if (amount === null || amount < 0) { toast.error("Valor inválido."); return; }
-    const { error } = await supabase.rpc("update_reserve_amount", { p_id: id, p_current_amount: amount });
+    const { error } = await supabase.rpc("update_reserve_amount", { p_id: id, p_current_amount: amount } as never);
     if (error) { toast.error(rpcErrorMessage(error, "Não foi possível atualizar a reserva.")); return; }
     toast.success("Reserva atualizada.");
     refresh();
@@ -95,7 +95,7 @@ function Reservas() {
 
   const removeReserve = async (id: string) => {
     if (!canWrite) { toast.error("Seu acesso é somente leitura."); return; }
-    const { error } = await supabase.rpc("delete_reserve", { p_id: id });
+    const { error } = await supabase.rpc("delete_reserve", { p_id: id } as never);
     if (error) { toast.error(rpcErrorMessage(error, "Não foi possível remover a reserva.")); return; }
     toast.success("Reserva removida.");
     refresh();

@@ -340,8 +340,8 @@ export function MobileQuickEntry({ documents = [] }: Props) {
       p_kind: draft.kind,
       p_description: draft.description,
       p_amount: draft.amount,
-      p_category_id: draft.categoryId,
-      p_to_account_id: null,
+      p_category_id: draft.categoryId ?? undefined,
+      p_to_account_id: undefined,
       p_payment_method: "other",
       p_competence_date: txDate,
       p_due_date: txDate,
@@ -352,7 +352,7 @@ export function MobileQuickEntry({ documents = [] }: Props) {
       p_shift_competence: installments > 1,
       p_source: source,
       p_idempotency_key: idempotencyKeyRef.current,
-    });
+    } as never);
     if (error || !txId) {
       setSaving(false);
       toast.error(rpcErrorMessage(error, "Não foi possível confirmar o lançamento."));

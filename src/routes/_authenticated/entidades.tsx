@@ -103,7 +103,7 @@ function Entidades() {
       p_kind: kind,
       p_color: color,
       p_slug: slug,
-    });
+    } as never);
     setBusy(false);
     if (error) {
       toast.error(rpcErrorMessage(error, "Não foi possível criar a entidade."));
@@ -138,9 +138,9 @@ function Entidades() {
       p_id: editing.id,
       p_name: cleanName,
       p_color: color,
-      p_description: clipAiDescription(description),
+      p_description: clipAiDescription(description) ?? undefined,
       p_ai_keywords: parseKeywordInput(keywords),
-    });
+    } as never);
     setBusy(false);
     if (error) {
       toast.error(rpcErrorMessage(error, "Não foi possível atualizar a entidade."));
@@ -154,7 +154,7 @@ function Entidades() {
 
   const toggleActive = async (id: string, current: boolean) => {
     if (!canWrite) { toast.error("Seu acesso é somente leitura."); return; }
-    const { error } = await supabase.rpc("toggle_financial_entity_active", { p_id: id });
+    const { error } = await supabase.rpc("toggle_financial_entity_active", { p_id: id } as never);
     if (error) { toast.error(rpcErrorMessage(error, "Não foi possível atualizar a entidade.")); return; }
     toast.success(current ? "Entidade desativada sem apagar o histórico." : "Entidade reativada.");
     refresh();

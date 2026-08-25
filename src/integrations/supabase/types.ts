@@ -603,12 +603,23 @@ export type Database = {
       }
       financial_documents: {
         Row: {
+          confirm_idempotency_key: string | null
+          content_hash: string | null
           created_at: string
+          credit_card_purchase_id: string | null
           entity_id: string | null
           file_name: string
           id: string
+          interpretation_error: string | null
+          interpretation_json: Json | null
+          interpretation_model: string | null
+          interpretation_version: number
+          interpreted_at: string | null
           mime_type: string | null
           notes: string | null
+          possible_recurring: boolean
+          processing_by: string | null
+          processing_started_at: string | null
           size_bytes: number | null
           source: string
           space_id: string | null
@@ -617,25 +628,25 @@ export type Database = {
           transaction_id: string | null
           updated_at: string
           user_id: string
-          content_hash: string | null
-          interpretation_version: number
-          interpreted_at: string | null
-          interpretation_model: string | null
-          interpretation_json: Json | null
-          interpretation_error: string | null
-          processing_started_at: string | null
-          processing_by: string | null
-          confirm_idempotency_key: string | null
-          credit_card_purchase_id: string | null
-          possible_recurring: boolean
         }
         Insert: {
+          confirm_idempotency_key?: string | null
+          content_hash?: string | null
           created_at?: string
+          credit_card_purchase_id?: string | null
           entity_id?: string | null
           file_name: string
           id?: string
+          interpretation_error?: string | null
+          interpretation_json?: Json | null
+          interpretation_model?: string | null
+          interpretation_version?: number
+          interpreted_at?: string | null
           mime_type?: string | null
           notes?: string | null
+          possible_recurring?: boolean
+          processing_by?: string | null
+          processing_started_at?: string | null
           size_bytes?: number | null
           source?: string
           space_id?: string | null
@@ -644,25 +655,25 @@ export type Database = {
           transaction_id?: string | null
           updated_at?: string
           user_id: string
-          content_hash?: string | null
-          interpretation_version?: number
-          interpreted_at?: string | null
-          interpretation_model?: string | null
-          interpretation_json?: Json | null
-          interpretation_error?: string | null
-          processing_started_at?: string | null
-          processing_by?: string | null
-          confirm_idempotency_key?: string | null
-          credit_card_purchase_id?: string | null
-          possible_recurring?: boolean
         }
         Update: {
+          confirm_idempotency_key?: string | null
+          content_hash?: string | null
           created_at?: string
+          credit_card_purchase_id?: string | null
           entity_id?: string | null
           file_name?: string
           id?: string
+          interpretation_error?: string | null
+          interpretation_json?: Json | null
+          interpretation_model?: string | null
+          interpretation_version?: number
+          interpreted_at?: string | null
           mime_type?: string | null
           notes?: string | null
+          possible_recurring?: boolean
+          processing_by?: string | null
+          processing_started_at?: string | null
           size_bytes?: number | null
           source?: string
           space_id?: string | null
@@ -671,19 +682,15 @@ export type Database = {
           transaction_id?: string | null
           updated_at?: string
           user_id?: string
-          content_hash?: string | null
-          interpretation_version?: number
-          interpreted_at?: string | null
-          interpretation_model?: string | null
-          interpretation_json?: Json | null
-          interpretation_error?: string | null
-          processing_started_at?: string | null
-          processing_by?: string | null
-          confirm_idempotency_key?: string | null
-          credit_card_purchase_id?: string | null
-          possible_recurring?: boolean
         }
         Relationships: [
+          {
+            foreignKeyName: "financial_documents_credit_card_purchase_id_fkey"
+            columns: ["credit_card_purchase_id"]
+            isOneToOne: false
+            referencedRelation: "credit_card_purchases"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "financial_documents_entity_id_fkey"
             columns: ["entity_id"]
@@ -1016,10 +1023,10 @@ export type Database = {
           due_date: string | null
           entity_id: string
           id: string
+          idempotency_key: string | null
           installment_no: number | null
           installment_total: number | null
           is_demo: boolean
-          idempotency_key: string | null
           kind: string
           notes: string | null
           paid_at: string | null
@@ -1047,10 +1054,10 @@ export type Database = {
           due_date?: string | null
           entity_id: string
           id?: string
+          idempotency_key?: string | null
           installment_no?: number | null
           installment_total?: number | null
           is_demo?: boolean
-          idempotency_key?: string | null
           kind: string
           notes?: string | null
           paid_at?: string | null
@@ -1078,10 +1085,10 @@ export type Database = {
           due_date?: string | null
           entity_id?: string
           id?: string
+          idempotency_key?: string | null
           installment_no?: number | null
           installment_total?: number | null
           is_demo?: boolean
-          idempotency_key?: string | null
           kind?: string
           notes?: string | null
           paid_at?: string | null
@@ -1263,28 +1270,13 @@ export type Database = {
     }
     Functions: {
       add_months_clamped: {
-        Args: { p_date: string; p_desired_day?: number | null; p_months: number }
+        Args: { p_date: string; p_desired_day?: number; p_months: number }
         Returns: string
       }
-      update_recurring_transaction: {
-        Args: {
-          p_account_id: string
-          p_amount: number
-          p_category_id: string
-          p_day_of_month?: number | null
-          p_description: string
-          p_ends_at?: string | null
-          p_entity_id: string
-          p_frequency: string
-          p_id: string
-          p_kind: string
-          p_month_of_year?: number | null
-          p_notes?: string | null
-          p_payment_method?: string
-          p_starts_at: string
-          p_weekday?: number | null
-        }
-        Returns: string
+      archive_financial_document: { Args: { p_id: string }; Returns: string }
+      assert_writable_finance_space: {
+        Args: { p_space_id: string }
+        Returns: undefined
       }
       can_manage_finance_document_path: {
         Args: { p_name: string }
@@ -1302,14 +1294,102 @@ export type Database = {
         Args: { p_space_id: string; p_user_id?: string }
         Returns: boolean
       }
+      cancel_transaction: { Args: { p_id: string }; Returns: string }
       card_due_date: {
         Args: { _due_day: number; _month: string }
         Returns: string
       }
+      claim_financial_document_processing: {
+        Args: { p_force?: boolean; p_id: string }
+        Returns: {
+          already_interpreted: boolean
+          claimed: boolean
+          file_name: string
+          interpretation_json: Json
+          interpretation_version: number
+          mime_type: string
+          size_bytes: number
+          status: string
+          storage_path: string
+        }[]
+      }
+      clamp_month_day: {
+        Args: { p_day: number; p_month: number; p_year: number }
+        Returns: string
+      }
+      confirm_financial_document_transaction: {
+        Args: {
+          p_account_id?: string
+          p_amount: number
+          p_category_id?: string
+          p_competence_date?: string
+          p_credit_card_id?: string
+          p_description: string
+          p_due_date?: string
+          p_entity_id: string
+          p_id: string
+          p_installments?: number
+          p_kind: string
+          p_notes?: string
+          p_payment_method?: string
+          p_status?: string
+        }
+        Returns: {
+          credit_card_purchase_id: string
+          status: string
+          transaction_id: string
+        }[]
+      }
       consume_finance_invite: { Args: { p_token: string }; Returns: string }
+      create_account: {
+        Args: {
+          p_bank: string
+          p_entity_id: string
+          p_name: string
+          p_opening_balance: number
+          p_type: string
+        }
+        Returns: string
+      }
+      create_card_cash_movement: {
+        Args: {
+          p_account_id: string
+          p_amount: number
+          p_credit_card_id: string
+          p_description: string
+          p_entity_id: string
+          p_paid_at: string
+          p_source: string
+          p_space_id: string
+          p_user_id: string
+        }
+        Returns: string
+      }
+      create_category: {
+        Args: {
+          p_ai_keywords?: string[]
+          p_color: string
+          p_description?: string
+          p_kind: string
+          p_name: string
+        }
+        Returns: string
+      }
+      create_credit_card: {
+        Args: {
+          p_account_id?: string
+          p_brand?: string
+          p_closing_day: number
+          p_credit_limit: number
+          p_due_day: number
+          p_entity_id: string
+          p_name: string
+        }
+        Returns: string
+      }
       create_credit_card_purchase: {
         Args: {
-          _category_id?: string | null
+          _category_id: string
           _credit_card_id: string
           _description: string
           _installments?: number
@@ -1330,36 +1410,116 @@ export type Database = {
           token: string
         }[]
       }
+      create_financial_entity: {
+        Args: {
+          p_color: string
+          p_kind: string
+          p_name: string
+          p_slug: string
+        }
+        Returns: string
+      }
       create_recurring_transaction: {
         Args: {
           p_account_id: string
           p_amount: number
           p_category_id: string
-          p_day_of_month?: number | null
+          p_day_of_month?: number
           p_description: string
-          p_ends_at?: string | null
+          p_ends_at?: string
           p_entity_id: string
           p_frequency: string
           p_kind: string
-          p_month_of_year?: number | null
-          p_notes?: string | null
+          p_month_of_year?: number
+          p_notes?: string
           p_payment_method?: string
           p_starts_at: string
-          p_weekday?: number | null
+          p_weekday?: number
+        }
+        Returns: string
+      }
+      create_reserve: {
+        Args: {
+          p_account_id?: string
+          p_current_amount: number
+          p_entity_id: string
+          p_name: string
+          p_notes?: string
+          p_target_amount: number
+        }
+        Returns: string
+      }
+      create_transaction: {
+        Args: {
+          p_account_id: string
+          p_amount: number
+          p_amount_mode?: string
+          p_category_id?: string
+          p_competence_date?: string
+          p_description: string
+          p_due_date?: string
+          p_entity_id: string
+          p_idempotency_key?: string
+          p_installments?: number
+          p_kind: string
+          p_notes?: string
+          p_payment_method?: string
+          p_shift_competence?: boolean
+          p_source?: string
+          p_status?: string
+          p_to_account_id?: string
         }
         Returns: string
       }
       current_finance_space_id: { Args: never; Returns: string }
+      delete_budget: { Args: { p_id: string }; Returns: string }
+      delete_reserve: { Args: { p_id: string }; Returns: string }
       end_recurring_transaction: {
         Args: { p_ends_at?: string; p_id: string }
         Returns: string
       }
-      ensure_finance_default_categories: { Args: { p_space_id: string }; Returns: number }
+      ensure_finance_default_categories: {
+        Args: { p_space_id: string }
+        Returns: number
+      }
+      ensure_finance_space_for_user: {
+        Args: { p_user_id: string }
+        Returns: string
+      }
       ensure_finance_workspace: {
         Args: { _user_id: string }
         Returns: undefined
       }
-      generate_due_recurring_transactions: { Args: { p_until?: string }; Returns: number }
+      fail_financial_document_interpretation: {
+        Args: { p_error: string; p_id: string }
+        Returns: string
+      }
+      find_financial_document_by_hash: {
+        Args: { p_content_hash: string }
+        Returns: {
+          document_id: string
+          status: string
+          storage_path: string
+        }[]
+      }
+      first_recurring_occurrence_date: {
+        Args: {
+          p_day_of_month: number
+          p_frequency: string
+          p_from: string
+          p_month_of_year: number
+          p_weekday: number
+        }
+        Returns: string
+      }
+      generate_due_recurring_transactions: {
+        Args: { p_until?: string }
+        Returns: number
+      }
+      infer_finance_space_id: {
+        Args: { p_row: Json; p_table: string }
+        Returns: string
+      }
       inspect_finance_invite: {
         Args: { p_token: string }
         Returns: {
@@ -1378,6 +1538,10 @@ export type Database = {
       is_finance_space_owner: {
         Args: { p_space_id: string; p_user_id?: string }
         Returns: boolean
+      }
+      link_financial_document: {
+        Args: { p_id: string; p_transaction_id: string }
+        Returns: string
       }
       list_finance_family: {
         Args: never
@@ -1403,6 +1567,21 @@ export type Database = {
           used_at: string
         }[]
       }
+      mark_financial_document_failed: {
+        Args: { p_file_name: string; p_storage_path: string }
+        Returns: string
+      }
+      next_recurring_occurrence_date: {
+        Args: {
+          p_day_of_month: number
+          p_frequency: string
+          p_from: string
+          p_month_of_year: number
+          p_weekday: number
+        }
+        Returns: string
+      }
+      normalize_category_name: { Args: { p_name: string }; Returns: string }
       pause_recurring_transaction: { Args: { p_id: string }; Returns: boolean }
       pay_credit_card_bill: {
         Args: {
@@ -1425,134 +1604,23 @@ export type Database = {
         }
         Returns: string
       }
-      resume_recurring_transaction: { Args: { p_id: string }; Returns: string }
-      revoke_finance_invite: { Args: { p_invite_id: string }; Returns: boolean }
-      revoke_finance_member: { Args: { p_user_id: string }; Returns: boolean }
-      shares_finance_space_with: {
-        Args: { p_other_user_id: string }
-        Returns: boolean
-      }
-      create_financial_entity: {
-        Args: { p_name: string; p_kind: string; p_color: string; p_slug: string }
-        Returns: string
-      }
-      toggle_financial_entity_active: { Args: { p_id: string }; Returns: boolean }
-      create_account: {
-        Args: {
-          p_entity_id: string
-          p_name: string
-          p_type: string
-          p_bank: string
-          p_opening_balance: number
-        }
-        Returns: string
-      }
-      toggle_account_active: { Args: { p_id: string }; Returns: boolean }
-      create_transaction: {
-        Args: {
-          p_entity_id: string
-          p_account_id: string
-          p_kind: string
-          p_description: string
-          p_amount: number
-          p_category_id?: string | null
-          p_to_account_id?: string | null
-          p_payment_method?: string | null
-          p_competence_date?: string | null
-          p_due_date?: string | null
-          p_status?: string | null
-          p_notes?: string | null
-          p_installments?: number | null
-          p_amount_mode?: string | null
-          p_shift_competence?: boolean | null
-          p_source?: string | null
-          p_idempotency_key?: string | null
-        }
-        Returns: string
-      }
-      cancel_transaction: { Args: { p_id: string }; Returns: string }
-      settle_transaction: {
-        Args: { p_id: string; p_paid_at?: string | null }
-        Returns: string
-      }
-      upsert_budget: {
-        Args: {
-          p_entity_id: string
-          p_category_id: string
-          p_month: string
-          p_planned_amount: number
-        }
-        Returns: string
-      }
-      delete_budget: { Args: { p_id: string }; Returns: string }
-      create_reserve: {
-        Args: {
-          p_entity_id: string
-          p_name: string
-          p_target_amount: number
-          p_current_amount: number
-          p_account_id?: string | null
-          p_notes?: string | null
-        }
-        Returns: string
-      }
-      update_reserve_amount: {
-        Args: { p_id: string; p_current_amount: number }
-        Returns: string
-      }
-      delete_reserve: { Args: { p_id: string }; Returns: string }
-      create_category: {
-        Args: {
-          p_name: string
-          p_kind: string
-          p_color: string
-          p_description?: string | null
-          p_ai_keywords?: string[] | null
-        }
-        Returns: string
-      }
-      update_category: {
-        Args: {
-          p_id: string
-          p_name: string
-          p_kind: string
-          p_color: string
-          p_description?: string | null
-          p_ai_keywords?: string[] | null
-        }
-        Returns: string
-      }
-      update_financial_entity: {
-        Args: {
-          p_id: string
-          p_name: string
-          p_color: string
-          p_description?: string | null
-          p_ai_keywords?: string[] | null
-        }
-        Returns: string
-      }
-      toggle_category_active: { Args: { p_id: string }; Returns: boolean }
-      create_credit_card: {
-        Args: {
-          p_entity_id: string
-          p_name: string
-          p_credit_limit: number
-          p_closing_day: number
-          p_due_day: number
-          p_account_id?: string | null
-          p_brand?: string | null
-        }
-        Returns: string
+      reconcile_financial_documents: {
+        Args: never
+        Returns: {
+          detail: string
+          document_id: string
+          issue: string
+          storage_path: string
+        }[]
       }
       register_financial_document: {
         Args: {
-          p_storage_path: string
+          p_content_hash?: string
           p_file_name: string
-          p_mime_type?: string | null
-          p_size_bytes?: number | null
-          p_source?: string | null
-          p_content_hash?: string | null
+          p_mime_type?: string
+          p_size_bytes?: number
+          p_source?: string
+          p_storage_path: string
         }
         Returns: {
           document_id: string
@@ -1561,89 +1629,107 @@ export type Database = {
           storage_path: string
         }[]
       }
-      find_financial_document_by_hash: {
-        Args: { p_content_hash: string }
-        Returns: {
-          document_id: string
-          storage_path: string
-          status: string
-        }[]
-      }
-      claim_financial_document_processing: {
-        Args: { p_id: string; p_force?: boolean | null }
-        Returns: {
-          claimed: boolean
-          already_interpreted: boolean
-          status: string
-          interpretation_json: Json | null
-          interpretation_version: number
-          storage_path: string
-          mime_type: string | null
-          size_bytes: number | null
-          file_name: string
-        }[]
+      resume_recurring_transaction: { Args: { p_id: string }; Returns: string }
+      revoke_finance_invite: { Args: { p_invite_id: string }; Returns: boolean }
+      revoke_finance_member: { Args: { p_user_id: string }; Returns: boolean }
+      sanitize_ai_keywords: {
+        Args: { p_keywords: string[] }
+        Returns: string[]
       }
       save_financial_document_interpretation: {
         Args: {
           p_id: string
           p_json: Json
           p_model: string
-          p_possible_recurring?: boolean | null
+          p_possible_recurring?: boolean
         }
         Returns: string
-      }
-      fail_financial_document_interpretation: {
-        Args: { p_id: string; p_error: string }
-        Returns: string
-      }
-      confirm_financial_document_transaction: {
-        Args: {
-          p_id: string
-          p_entity_id: string
-          p_kind: string
-          p_description: string
-          p_amount: number
-          p_account_id?: string | null
-          p_category_id?: string | null
-          p_payment_method?: string | null
-          p_competence_date?: string | null
-          p_due_date?: string | null
-          p_status?: string | null
-          p_notes?: string | null
-          p_credit_card_id?: string | null
-          p_installments?: number | null
-        }
-        Returns: {
-          transaction_id: string | null
-          credit_card_purchase_id: string | null
-          status: string
-        }[]
-      }
-      archive_financial_document: { Args: { p_id: string }; Returns: string }
-      reconcile_financial_documents: {
-        Args: never
-        Returns: {
-          issue: string
-          document_id: string | null
-          storage_path: string | null
-          detail: string
-        }[]
       }
       set_financial_document_status: {
         Args: { p_id: string; p_status: string }
         Returns: string
       }
-      link_financial_document: {
-        Args: { p_id: string; p_transaction_id: string }
+      settle_transaction: {
+        Args: { p_id: string; p_paid_at?: string }
         Returns: string
       }
-      mark_financial_document_failed: {
-        Args: { p_storage_path: string; p_file_name: string }
-        Returns: string
+      shares_finance_space_with: {
+        Args: { p_other_user_id: string }
+        Returns: boolean
       }
       split_money_installments: {
         Args: { p_count: number; p_total: number }
         Returns: number[]
+      }
+      toggle_account_active: { Args: { p_id: string }; Returns: boolean }
+      toggle_category_active: { Args: { p_id: string }; Returns: boolean }
+      toggle_financial_entity_active: {
+        Args: { p_id: string }
+        Returns: boolean
+      }
+      update_category: {
+        Args: {
+          p_ai_keywords?: string[]
+          p_color: string
+          p_description?: string
+          p_id: string
+          p_kind: string
+          p_name: string
+        }
+        Returns: string
+      }
+      update_financial_entity: {
+        Args: {
+          p_ai_keywords?: string[]
+          p_color: string
+          p_description?: string
+          p_id: string
+          p_name: string
+        }
+        Returns: string
+      }
+      update_recurring_transaction: {
+        Args: {
+          p_account_id: string
+          p_amount: number
+          p_category_id: string
+          p_day_of_month?: number
+          p_description: string
+          p_ends_at?: string
+          p_entity_id: string
+          p_frequency: string
+          p_id: string
+          p_kind: string
+          p_month_of_year?: number
+          p_notes?: string
+          p_payment_method?: string
+          p_starts_at: string
+          p_weekday?: number
+        }
+        Returns: string
+      }
+      update_reserve_amount: {
+        Args: { p_current_amount: number; p_id: string }
+        Returns: string
+      }
+      upsert_budget: {
+        Args: {
+          p_category_id: string
+          p_entity_id: string
+          p_month: string
+          p_planned_amount: number
+        }
+        Returns: string
+      }
+      write_finance_audit: {
+        Args: {
+          p_action: string
+          p_details?: Json
+          p_record_id: string
+          p_space_id: string
+          p_table_name: string
+        }
+        Returns: undefined
       }
     }
     Enums: {

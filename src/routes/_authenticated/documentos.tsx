@@ -101,10 +101,10 @@ function Documentos() {
     const { error } = await supabase.rpc("register_financial_document", {
       p_storage_path: path,
       p_file_name: fileName,
-      p_mime_type: null,
-      p_size_bytes: null,
+      p_mime_type: undefined,
+      p_size_bytes: undefined,
       p_source: "upload",
-    });
+    } as never);
     if (error) { toast.error(rpcErrorMessage(error, "Não foi possível recatalogar o arquivo.")); return; }
     toast.success("Arquivo recatalogado.");
     void load();
@@ -151,7 +151,7 @@ function Documentos() {
   const remove = async (doc: CatalogDoc) => {
     if (!canWrite) { toast.error("Seu acesso é somente leitura."); return; }
     const linked = doc.status === "linked" || Boolean(doc.transaction_id || doc.credit_card_purchase_id);
-    const archived = await supabase.rpc("archive_financial_document", { p_id: doc.id });
+    const archived = await supabase.rpc("archive_financial_document", { p_id: doc.id } as never);
     if (archived.error) {
       toast.error(rpcErrorMessage(archived.error, "Não foi possível arquivar o documento."));
       return;
