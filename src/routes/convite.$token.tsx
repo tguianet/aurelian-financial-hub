@@ -31,7 +31,7 @@ function InvitePage() {
   const { token } = Route.useParams();
   const navigate = useNavigate();
   const [info, setInfo] = useState<InviteInfo | null>(null);
-  const [status, setStatus] = useState<"checking" | "joining" | "ready" | "error" | "auth-disabled">("checking");
+  const [status, setStatus] = useState<"checking" | "joining" | "ready" | "error" | "auth-disabled" | "already-connected">("checking");
   const [message, setMessage] = useState("");
 
   useEffect(() => {
@@ -54,8 +54,24 @@ function InvitePage() {
         return;
       }
 
-      setStatus("joining");
       let session = (await supabase.auth.getSession()).data.session;
+
+      if (session) {
+        const existingSpace = await db.rpc("current_finance_space_id");
+        if (cancelled) return;
+        if (existingSpace.error) {
+          setStatus("error");
+          setMessage(existingSpace.error.message);
+          return;
+        }
+        if (existingSpace.data) {
+          setStatus("already-connected");
+          setMessage("Este aparelho já está conectado ao Aurelian. Abra o convite no celular do familiar ou em uma aba anônima/privada.");
+          return;
+        }
+      }
+
+      setStatus("joining");
       if (!session) {
         const anonymous = await supabase.auth.signInAnonymously();
         if (cancelled) return;
@@ -82,8 +98,14 @@ function InvitePage() {
       const consumed = await db.rpc("consume_finance_invite", { p_token: token });
       if (cancelled) return;
       if (consumed.error) {
-        setStatus("error");
-        setMessage(consumed.error.message);
+        const text = consumed.error.message || "";
+        if (/owner_cannot_consume_invite|already_member/i.test(text)) {
+          setStatus("already-connected");
+          setMessage("Este aparelho já está conectado ao Aurelian. Abra o convite no celular do familiar ou em uma aba anônima/privada.");
+        } else {
+          setStatus("error");
+          setMessage(text);
+        }
         return;
       }
 
@@ -118,6 +140,13 @@ function InvitePage() {
               <h1 className="mt-4 text-xl font-semibold">Falta ativar o acesso direto</h1>
               <p className="mt-2 text-sm text-muted-foreground">{message}</p>
               <p className="mt-3 text-xs text-muted-foreground">O convite está válido. Não precisa criar senha nem compartilhar a senha do proprietário.</p>
+            </>
+          ) : status === "already-connected" ? (
+            <>
+              <ShieldCheck className="mx-auto size-9 text-primary" />
+              <h1 className="mt-4 text-xl font-semibold">Este aparelho já está conectado</h1>
+              <p className="mt-2 text-sm text-muted-foreground">{message}</p>
+              <Button className="mt-5 w-full" onClick={() => navigate({ to: "/dashboard", replace: true })}>Voltar ao meu Aurelian</Button>
             </>
           ) : (
             <>
