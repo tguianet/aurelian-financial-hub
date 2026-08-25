@@ -87,7 +87,6 @@ begin
   if p_role not in ('editor','viewer') then raise exception 'invalid_role'; end if;
   if p_expires_hours < 1 or p_expires_hours > 720 then raise exception 'invalid_expiration'; end if;
 
-  -- finance_spaces.owner_user_id is the canonical owner source.
   select s.id into v_space
   from public.finance_spaces s
   where s.owner_user_id = auth.uid()
@@ -96,7 +95,6 @@ begin
 
   if v_space is null then raise exception 'owner_space_not_found'; end if;
 
-  -- Ensure the canonical owner membership remains healthy.
   insert into public.finance_space_members(space_id,user_id,role,added_by)
   values(v_space,auth.uid(),'owner',auth.uid())
   on conflict(space_id,user_id) do update
@@ -135,7 +133,6 @@ begin
   if v.used_at is not null then raise exception 'invite_already_used'; end if;
   if v.expires_at <= now() then raise exception 'invite_expired'; end if;
 
-  -- Never allow the finance-space owner to consume a family invite.
   if exists (
     select 1 from public.finance_spaces s
     where s.id = v.space_id and s.owner_user_id = v_user
@@ -143,7 +140,6 @@ begin
     raise exception 'owner_cannot_consume_invite';
   end if;
 
-  -- An already-connected member must not consume another invite and change role.
   if exists (
     select 1 from public.finance_space_members m
     where m.space_id = v.space_id
@@ -174,22 +170,8 @@ begin
 
   perform public.ensure_finance_default_categories(v.space_id);
 
-  -- Anonymous invite sessions may have received an empty personal owner space
-  -- during auth onboarding. Revoke only that empty owner membership after joining.
-  update public.finance_space_members m
-  set revoked_at=now()
-  where m.user_id=v_user
-    and m.space_id<>v.space_id
-    and m.role='owner'
-    and m.revoked_at is null
-    and not exists(
-      select 1
-      from public.finance_space_members o
-      where o.space_id=m.space_id
-        and o.user_id<>v_user
-        and o.revoked_at is null
-    );
-
+  -- Do not revoke a personal owner membership here. current_finance_space_id()
+  -- already prefers a shared space when one exists, and owner memberships are canonical.
   return v.space_id;
 end;
 $$;
