@@ -3,7 +3,7 @@ import "./lib/error-capture";
 import { createClient } from "@supabase/supabase-js";
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
-import { compactAiCategory, compactAiEntity, matchEntityRecord, resolveCategoryMatch, blendSemanticConfidence } from "./lib/categories";
+import { compactAiCategory, compactAiEntity, matchEntityRecord, acceptedEntityId, resolveCategoryMatch, blendSemanticConfidence } from "./lib/categories";
 import { parseLooseDate } from "./lib/date";
 import { parseBRLMoney, roundMoney } from "./lib/money";
 import {
@@ -208,10 +208,6 @@ function sanitizeInterpretation(raw: any, context: FinanceContext, originalText:
   ].join(" ");
   const categoryMatch = resolveCategoryMatch(allowed, kind, categoryHint);
   const categoryId = categoryMatch.ambiguous ? null : categoryMatch.id;
-  const entityHint = [
-    typeof normalized.value.entity_name === "string" ? normalized.value.entity_name : "",
-    originalText,
-  ].join(" ");
   const entityMatch = matchEntityRecord(
     (context.entities ?? []).map((entity) => ({
       id: entity.id,
@@ -221,11 +217,11 @@ function sanitizeInterpretation(raw: any, context: FinanceContext, originalText:
       description: entity.description ?? null,
       ai_keywords: entity.ai_keywords ?? null,
     })),
-    entityHint,
+    originalText,
     context.selected_entity_id ?? null,
   );
   const accountIds = new Set((context.accounts ?? []).map((account) => account.id));
-  const entityId = entityMatch.ambiguous ? null : entityMatch.id;
+  const entityId = acceptedEntityId(entityMatch);
   return {
     ok: true as const,
     value: {
@@ -278,7 +274,7 @@ async function handleFinanceInterpret(request: Request, env: unknown): Promise<R
         {
           role: "system",
           content:
-            "Voce interpreta lancamentos financeiros pessoais e empresariais em portugues do Brasil. Nunca invente IDs nem UUIDs. Os IDs no catalogo sao apenas referencia tecnica. Devolva category_name e entity_name exatamente como no catalogo, ou null se houver duvida. Use description e keywords do catalogo para desambiguar. Escolha income para dinheiro que entrou e expense para dinheiro que saiu. Extraia o valor monetario principal. Descricao deve ser curta e util. document_date use YYYY-MM-DD quando houver data explicita, senao null. Confidence vai de 0 a 1. Se duas categorias forem plausiveis, retorne null em category_name.",
+            "Voce interpreta lancamentos financeiros pessoais e empresariais em portugues do Brasil. Nunca invente IDs nem UUIDs. Os IDs no catalogo sao apenas referencia tecnica. Devolva category_name e entity_name exatamente como no catalogo, ou null se houver duvida. Nao escolha entity_name se o texto nao indicar qual entidade esta envolvida. A ausencia de entidade e valida. Retorne entity_name=null em vez de adivinhar. selected_entity_id e apenas contexto preferencial e nunca deve substituir evidencia textual clara. Use description e keywords do catalogo para desambiguar categorias. Escolha income para dinheiro que entrou e expense para dinheiro que saiu. Extraia o valor monetario principal. Descricao deve ser curta e util. document_date use YYYY-MM-DD quando houver data explicita, senao null. Confidence vai de 0 a 1. Se duas categorias ou entidades forem plausiveis, retorne null nesse nome.",
         },
         { role: "user", content: `Comando: ${text}\n\nOpcoes disponiveis:\n${JSON.stringify(catalog)}` },
       ],
@@ -444,7 +440,7 @@ async function handleDocumentInterpret(request: Request, env: unknown): Promise<
           {
             role: "system",
             content:
-              "Voce extrai lancamentos financeiros de documentos em portugues do Brasil. Nunca invente valores. Nunca retorne UUIDs ou IDs internos. Use nomes do catalogo. kind=income para receber e expense para pagar/gasto. Datas em YYYY-MM-DD. payment_method em pix,cash,debit,credit,boleto,transfer,other. possible_recurring so se parecer mensalidade/assinatura. Use description e keywords do catalogo para escolher category_name e entity_name. Se houver ambiguidade, retorne null no nome. Confidence 0 a 1.",
+              "Voce extrai lancamentos financeiros de documentos em portugues do Brasil. Nunca invente valores. Nunca retorne UUIDs ou IDs internos. Use nomes do catalogo. kind=income para receber e expense para pagar/gasto. Datas em YYYY-MM-DD. payment_method em pix,cash,debit,credit,boleto,transfer,other. possible_recurring so se parecer mensalidade/assinatura. Use description e keywords do catalogo para escolher category_name e entity_name. Nao escolha entity_name se o documento nao indicar qual entidade do catalogo esta envolvida. A ausencia de entidade e valida. Retorne entity_name=null em vez de adivinhar. A entidade selecionada no app e apenas contexto preferencial e nunca deve substituir evidencia do documento. Se houver ambiguidade, retorne null no nome. Confidence 0 a 1.",
           },
           {
             role: "user",

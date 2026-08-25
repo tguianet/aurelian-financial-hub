@@ -25,13 +25,13 @@ type Props = {
 };
 
 export function DocumentReviewDialog({ open, documentId, suggestion, onOpenChange, onConfirmed }: Props) {
-  const { data, entityId: scopedEntity } = useEntityScope();
+  const { data } = useEntityScope();
   const { canWrite } = useFinanceAccess();
   const [busy, setBusy] = useState(false);
   const [kind, setKind] = useState(suggestion.kind);
   const [description, setDescription] = useState(suggestion.description);
   const [amount, setAmount] = useState(String(suggestion.amount).replace(".", ","));
-  const [entityId, setEntityId] = useState(suggestion.entity_id ?? (scopedEntity !== "all" ? scopedEntity : ""));
+  const [entityId, setEntityId] = useState(suggestion.entity_id ?? "");
   const [categoryId, setCategoryId] = useState(suggestion.category_id ?? "");
   const [accountId, setAccountId] = useState(suggestion.account_id ?? "");
   const [cardId, setCardId] = useState("");
@@ -96,9 +96,11 @@ export function DocumentReviewDialog({ open, documentId, suggestion, onOpenChang
           </DialogDescription>
         </DialogHeader>
 
-        {suggestion.ambiguous_entity ? (
+        {suggestion.ambiguous_entity || !suggestion.entity_id ? (
           <p className="rounded-md border border-border bg-surface px-3 py-2 text-xs text-muted-foreground">
-            A entidade ficou ambígua. Escolha manualmente antes de confirmar.
+            {suggestion.ambiguous_entity
+              ? "A entidade ficou ambígua. Escolha manualmente antes de confirmar."
+              : "O documento não identificou a entidade. Selecione antes de confirmar."}
           </p>
         ) : null}
         {suggestion.ambiguous_category ? (
@@ -206,7 +208,7 @@ export function DocumentReviewDialog({ open, documentId, suggestion, onOpenChang
 
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>Corrigir depois</Button>
-          <Button onClick={() => void confirm()} disabled={busy || !canWrite}>
+          <Button onClick={() => void confirm()} disabled={busy || !canWrite || !entityId}>
             {busy ? "Confirmando…" : "Confirmar lançamento"}
           </Button>
         </DialogFooter>

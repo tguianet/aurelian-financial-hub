@@ -10,12 +10,13 @@ import type { UploadedDocument } from "./QuickDocumentUpload";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { brl, type TxKind } from "@/lib/finance";
-import { compactAiCategory, compactAiEntity, matchEntityRecord, resolveCategoryId, resolveCategoryMatch, selectableCategories } from "@/lib/categories";
+import { acceptedEntityId, compactAiCategory, compactAiEntity, matchEntityRecord, resolveCategoryId, resolveCategoryMatch, selectableCategories } from "@/lib/categories";
 import { isValidDateIso, localDateIso, parseLooseDate } from "@/lib/date";
 import { parseBRLMoney, roundMoney } from "@/lib/money";
 import { newIdempotencyKey } from "@/lib/idempotency";
 import { rpcErrorMessage } from "@/lib/rpc-error";
 import { DocumentReviewDialog } from "./DocumentReviewDialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   requestDocumentInterpretation,
   type ResolvedDocumentSuggestion,
@@ -24,9 +25,9 @@ import {
 type Draft = {
   kind: Exclude<TxKind, "transfer">;
   amount: number;
-  entityId: string;
+  entityId: string | null;
   categoryId: string | null;
-  accountId: string;
+  accountId: string | null;
   description: string;
   originalText: string;
   parser: "local" | "openai";
@@ -143,30 +144,26 @@ export function MobileQuickEntry({ documents = [] }: Props) {
   }, originalText: string): Draft | null => {
     if (!ai?.kind || !ai.amount || Number(ai.amount) <= 0 || (ai.confidence ?? 0) < 0.5) return null;
     const preferredEntityId = selectedEntityId !== "all" ? selectedEntityId : null;
-    const entityMatch = matchEntityRecord(
-      data.entities,
-      `${ai.entity_name ?? ""} ${originalText}`,
-      preferredEntityId,
-    );
-    const entity = data.entities.find((e) => e.id === entityMatch.id) ??
-      (preferredEntityId ? data.entities.find((e) => e.id === preferredEntityId) : undefined) ??
-      data.entities.find((e) => e.slug === "pessoal") ?? data.entities[0];
-    if (!entity) return null;
+    const entityMatch = matchEntityRecord(data.entities, originalText, preferredEntityId);
+    const entityId = acceptedEntityId(entityMatch);
+    const entity = entityId ? data.entities.find((e) => e.id === entityId) : undefined;
     const categoryId = resolveCategoryId(
       data.categories,
       ai.kind,
       null,
       `${ai.category_name ?? ""} ${ai.description ?? ""} ${ai.vendor ?? ""} ${originalText}`,
     );
-    const account = data.accounts.find((a) => a.id === ai.account_id && a.entity_id === entity.id && a.active) ??
-      data.accounts.find((a) => a.entity_id === entity.id && a.active) ?? data.accounts.find((a) => a.entity_id === entity.id);
-    if (!account) return null;
+    const account = entity
+      ? data.accounts.find((a) => a.id === ai.account_id && a.entity_id === entity.id && a.active)
+        ?? data.accounts.find((a) => a.entity_id === entity.id && a.active)
+        ?? data.accounts.find((a) => a.entity_id === entity.id)
+      : undefined;
     return {
       kind: ai.kind,
       amount: roundMoney(Number(ai.amount)),
-      entityId: entity.id,
+      entityId: entity?.id ?? null,
       categoryId,
-      accountId: account.id,
+      accountId: account?.id ?? null,
       description: ai.description?.trim() || ai.vendor?.trim() || originalText || "Documento financeiro",
       originalText,
       parser: "openai",
@@ -183,26 +180,28 @@ export function MobileQuickEntry({ documents = [] }: Props) {
     const kind = inferKind(originalText);
     const preferredEntityId = selectedEntityId !== "all" ? selectedEntityId : null;
     const entityMatch = matchEntityRecord(data.entities, originalText, preferredEntityId);
-    const entity = data.entities.find((e) => e.id === entityMatch.id) ??
-      data.entities.find((e) => e.slug === "pessoal") ?? data.entities[0];
-    if (!entity) return null;
-    const account = data.accounts.find((a) => a.entity_id === entity.id && a.active) ?? data.accounts.find((a) => a.entity_id === entity.id);
-    if (!account) return null;
+    const entityId = acceptedEntityId(entityMatch);
+    const entity = entityId ? data.entities.find((e) => e.id === entityId) : undefined;
+    const account = entity
+      ? data.accounts.find((a) => a.entity_id === entity.id && a.active) ?? data.accounts.find((a) => a.entity_id === entity.id)
+      : undefined;
 
-    const categoryText = removeEntityMention(originalText, entity.name);
+    const categoryText = removeEntityMention(originalText, entity?.name);
     const categories = selectableCategories(data.categories, kind);
     const categoryMatch = resolveCategoryMatch(categories, kind, categoryText);
     const categoryId = categoryMatch.ambiguous ? null : categoryMatch.id;
 
     let stripped = originalText;
     if (installment) stripped = stripped.replace(installment.matchedText, "");
-    stripped = stripped.replace(/\b(parcelei|financiei|comprei|gastei|paguei|recebi|entrou|vendi|ganhei|faturei|reais|real|r\$|em|de)\b/gi, " ")
+    stripped = stripped.replace(/\b(parcelei|financiei|comprei|gastei|paguei|recebi|entrou|vendi|ganhei|faturei|reais|real|r\$|em|de|da|do)\b/gi, " ")
       .replace(/\d[\d.,]*/g, " ").replace(/\s+/g, " ").trim();
+    if (entity?.name) stripped = removeEntityMention(stripped, entity.name);
 
     const result: Draft = {
-      kind, amount, entityId: entity.id, categoryId, accountId: account.id,
+      kind, amount, entityId: entity?.id ?? null, categoryId, accountId: account?.id ?? null,
       description: stripped || (kind === "income" ? "Entrada rápida" : "Saída rápida"),
       originalText, parser: "local", ...(installment ? { installmentCount: installment.count, totalAmount: installment.totalAmount } : {}),
+      vendor: stripped || null,
       pending: inferPending(originalText, kind),
     };
     const confident = !categoryMatch.ambiguous && categoryMatch.confidence >= 0.8;
@@ -325,6 +324,8 @@ export function MobileQuickEntry({ documents = [] }: Props) {
   const confirm = async () => {
     if (!draft || !user) return;
     if (!canWrite) { toast.error("Seu acesso é somente leitura."); return; }
+    if (!draft.entityId) { toast.error("Selecione a entidade."); return; }
+    if (!draft.accountId) { toast.error("Selecione a conta da entidade."); return; }
     if (saving) return;
     if (!idempotencyKeyRef.current) idempotencyKeyRef.current = newIdempotencyKey();
     setSaving(true);
@@ -371,7 +372,6 @@ export function MobileQuickEntry({ documents = [] }: Props) {
     refresh();
   };
 
-  const entity = draft ? data.entities.find((e) => e.id === draft.entityId) : null;
   const category = draft ? data.categories.find((c) => c.id === draft.categoryId) : null;
   const account = draft ? data.accounts.find((a) => a.id === draft.accountId) : null;
 
@@ -418,7 +418,30 @@ export function MobileQuickEntry({ documents = [] }: Props) {
           <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
             <div><span className="block text-[11px] text-muted-foreground">Tipo</span><strong>{draft.kind === "income" ? "Entrada" : "Saída"}</strong></div>
             <div><span className="block text-[11px] text-muted-foreground">{draft.installmentCount ? "Valor da parcela" : "Valor"}</span><strong className={draft.kind === "income" ? "text-success" : "text-destructive"}>{brl(draft.amount)}</strong></div>
-            <div><span className="block text-[11px] text-muted-foreground">Entidade</span><strong>{entity?.name ?? "—"}</strong></div>
+            <div className="col-span-2">
+              <span className="block text-[11px] text-muted-foreground">Entidade</span>
+              <Select
+                value={draft.entityId ?? ""}
+                onValueChange={(value) => {
+                  const chosen = data.entities.find((item) => item.id === value);
+                  const nextAccount = chosen
+                    ? data.accounts.find((item) => item.entity_id === chosen.id && item.active)
+                      ?? data.accounts.find((item) => item.entity_id === chosen.id)
+                    : undefined;
+                  setDraft({ ...draft, entityId: value, accountId: nextAccount?.id ?? null });
+                }}
+              >
+                <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Selecione a entidade" /></SelectTrigger>
+                <SelectContent>
+                  {data.entities.filter((item) => item.active).map((item) => (
+                    <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {!draft.entityId ? (
+                <p className="mt-1 text-[11px] text-muted-foreground">O texto não indicou a entidade. Escolha antes de confirmar.</p>
+              ) : null}
+            </div>
             <div><span className="block text-[11px] text-muted-foreground">Categoria</span><strong>{category?.name ?? "Sem categoria"}</strong></div>
             <div><span className="block text-[11px] text-muted-foreground">Status</span><strong>{draft.pending ? (draft.kind === "income" ? "A receber" : "A pagar") : "Liquidado"}</strong></div>
             <div><span className="block text-[11px] text-muted-foreground">Data</span><strong>{draft.documentDate ?? "Hoje"}</strong></div>
@@ -428,7 +451,7 @@ export function MobileQuickEntry({ documents = [] }: Props) {
           </div>
           <div className="mt-4 grid grid-cols-2 gap-2">
             <Button variant="ghost" className="gap-2" onClick={() => setDraft(null)}><RotateCcw className="size-4" /> Corrigir</Button>
-            <Button className="gap-2" disabled={saving || !canWrite} onClick={confirm}><Check className="size-4" /> {saving ? "Salvando..." : "Confirmar"}</Button>
+            <Button className="gap-2" disabled={saving || !canWrite || !draft.entityId} onClick={confirm}><Check className="size-4" /> {saving ? "Salvando..." : "Confirmar"}</Button>
           </div>
         </div>
       ) : null}

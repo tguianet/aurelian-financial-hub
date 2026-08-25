@@ -80,7 +80,7 @@ const BUILTIN_ALIASES: Record<string, string[]> = {
   veiculo: ["moto", "motocicleta", "carro", "van", "saveiro", "caminhao"],
   manutencao: ["conserto", "reparo", "oficina", "pneu", "oleo"],
   combustivel: ["gasolina", "etanol", "alcool", "posto", "abastecer", "abastecimento", "diesel"],
-  alimentacao: ["comida", "almoco", "janta", "jantar", "mercado", "restaurante", "lanche"],
+  alimentacao: ["comida", "almoco", "janta", "jantar", "mercado", "restaurante", "padaria", "lanche"],
   "energia eletrica": ["conta de luz", "luz", "energia", "cpfl"],
   comissoes: ["comissao", "comparta", "indicacao"],
   vendas: ["vendi", "venda", "faturei", "faturamento"],
@@ -106,7 +106,7 @@ export const DEFAULT_CATEGORY_SEMANTICS: Array<{
   { name: "Rendimentos", kind: "income", description: "Rendimentos de aplicações, juros ou ganhos financeiros.", keywords: ["rendimento", "juros", "investimento", "aplicacao"] },
   { name: "Reembolsos", kind: "income", description: "Valores recebidos como devolução de gastos.", keywords: ["reembolso", "devolucao", "ressarcimento"] },
   { name: "Outras receitas", kind: "income", description: "Receitas que não se encaixam nas demais categorias.", keywords: ["outra receita", "entrada diversa", "receita diversa"] },
-  { name: "Alimentação", kind: "expense", description: "Gastos com refeições, comida e alimentação.", keywords: ["almoco", "jantar", "lanche", "comida", "restaurante", "mercado"] },
+  { name: "Alimentação", kind: "expense", description: "Gastos com refeições, comida e alimentação.", keywords: ["almoco", "jantar", "lanche", "comida", "restaurante", "padaria", "mercado"] },
   { name: "Combustível", kind: "expense", description: "Gastos com abastecimento de veículos.", keywords: ["gasolina", "etanol", "alcool", "diesel", "posto", "combustivel", "abastecimento", "abastecer"] },
   { name: "Fornecedores", kind: "expense", description: "Pagamentos a fornecedores e compra de mercadorias ou insumos.", keywords: ["fornecedor", "mercadoria", "materia-prima", "insumo", "compra para estoque"] },
   { name: "Funcionários", kind: "expense", description: "Custos relacionados a funcionários e equipe.", keywords: ["salario", "funcionario", "folha", "diaria", "vale", "beneficio", "equipe"] },
@@ -263,6 +263,64 @@ export function resolveCategoryId(
   return resolveCategoryMatch(categories, kind, hintText).id;
 }
 
+export const MIN_ENTITY_TEXT_CONFIDENCE = 0.6;
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function phraseInHint(phrase: string, hint: string): boolean {
+  const normalized = normalizeCategoryName(phrase);
+  if (normalized.length < 3) return false;
+  const pattern = escapeRegExp(normalized).replace(/\s+/g, "\\s+");
+  return new RegExp(`(?:^|[^a-z0-9])${pattern}(?:$|[^a-z0-9])`).test(hint);
+}
+
+function entityKeywords(record: SemanticRecord): string[] {
+  return [...new Set((record.ai_keywords ?? []).map((item) => normalizeCategoryName(item)).filter((item) => item.length >= 2))];
+}
+
+function scoreEntityRecord(record: SemanticRecord, hint: string): { score: number; source: SemanticMatch["source"] } {
+  if (!hint) return { score: 0, source: "none" };
+  const name = normalizeCategoryName(record.name);
+  if (!name || name.length < 3) return { score: 0, source: "none" };
+
+  if (hint === name) return { score: 100, source: "name" };
+  if (phraseInHint(name, hint)) return { score: 70 + Math.min(25, name.length), source: "name" };
+
+  const nameTokens = tokenize(name).filter((token) => token.length >= 4);
+  const hintTokens = new Set(tokenize(hint));
+  if (nameTokens.length >= 2 && nameTokens.every((token) => hintTokens.has(token))) {
+    return { score: 86, source: "name" };
+  }
+
+  const keywords = entityKeywords(record);
+  const hits = keywords.filter((keyword) => keywordMatchesHint(keyword, hint, hintTokens));
+  if (hits.length >= 2) return { score: 88, source: "keyword" };
+  if (hits.length === 1) {
+    const longest = hits[0] ?? "";
+    return { score: longest.length >= 5 || longest.includes(" ") ? 68 : 52, source: "keyword" };
+  }
+
+  const description = normalizeCategoryName(record.description ?? "");
+  if (description) {
+    const overlap = tokenize(description).filter((token) => hintTokens.has(token) && token.length >= 4);
+    if (overlap.length >= 2) return { score: 62, source: "description" };
+  }
+
+  return { score: 0, source: "none" };
+}
+
+/**
+ * Resolve entidade só com evidência no texto.
+ *
+ * Duplicidades conhecidas (não apagar/mesclar nesta etapa):
+ * tguianet / TGuiaNet, softwors / Softworks, Restarurante / Restaurante,
+ * empresa de joias / Joias. Se duas casarem o mesmo texto, fica ambiguous e id=null.
+ *
+ * Slug sozinho nunca conta. A entidade do topo é só fallback de baixa confiança
+ * e não deve ser aplicada automaticamente (ver acceptedEntityId).
+ */
 export function matchEntityRecord(
   entities: Array<{
     id: string;
@@ -276,21 +334,46 @@ export function matchEntityRecord(
   preferredId?: string | null,
 ): SemanticMatch {
   const active = entities.filter((entity) => entity.active !== false);
-  if (preferredId && active.some((entity) => entity.id === preferredId)) {
-    const hint = hintText ? normalizeCategoryName(hintText) : "";
-    if (hint) {
-      const mentioned = active.filter((entity) => {
-        const name = normalizeCategoryName(entity.name);
-        const slug = normalizeCategoryName(entity.slug ?? "");
-        return (name.length >= 3 && hint.includes(name)) || (slug.length >= 3 && hint.includes(slug));
-      });
-      if (mentioned.length === 1 && mentioned[0]!.id !== preferredId) {
-        return { id: mentioned[0]!.id, confidence: 0.9, ambiguous: false, source: "name" };
+  const hint = hintText ? normalizeCategoryName(hintText) : "";
+
+  if (hint) {
+    const ranked = active
+      .map((record) => ({ record, ...scoreEntityRecord(record, hint) }))
+      .filter((item) => item.score > 0)
+      .sort((a, b) => b.score - a.score || b.record.name.length - a.record.name.length);
+
+    const top = ranked[0];
+    if (top) {
+      const runnerUp = ranked[1];
+      const ambiguous = Boolean(
+        runnerUp
+        && runnerUp.record.id !== top.record.id
+        && runnerUp.score >= top.score - 10
+        && top.score < 96,
+      );
+      if (ambiguous) {
+        return { id: null, confidence: Math.min(0.45, top.score / 100), ambiguous: true, source: top.source };
       }
+      return {
+        id: top.record.id,
+        confidence: Math.min(1, top.score / 100),
+        ambiguous: false,
+        source: top.source,
+      };
     }
-    return { id: preferredId, confidence: 1, ambiguous: false, source: "preferred" };
   }
-  return resolveSemanticMatch(active, hintText);
+
+  if (preferredId && active.some((entity) => entity.id === preferredId)) {
+    return { id: preferredId, confidence: 0.25, ambiguous: false, source: "preferred" };
+  }
+  return { id: null, confidence: 0, ambiguous: false, source: "none" };
+}
+
+export function acceptedEntityId(match: SemanticMatch): string | null {
+  if (match.ambiguous || !match.id) return null;
+  if (match.source === "preferred" || match.source === "fallback" || match.source === "none") return null;
+  if (match.confidence < MIN_ENTITY_TEXT_CONFIDENCE) return null;
+  return match.id;
 }
 
 const MAX_AI_PAYLOAD_DESCRIPTION = 120;

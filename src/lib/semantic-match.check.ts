@@ -1,5 +1,6 @@
 import {
   DEFAULT_CATEGORY_SEMANTICS,
+  acceptedEntityId,
   blendSemanticConfidence,
   matchEntityRecord,
   resolveCategoryId,
@@ -77,10 +78,56 @@ export function runSemanticMatchChecks() {
   const entities = [
     { id: "pessoal", name: "Pessoal", slug: "pessoal", active: true, ai_keywords: ["casa"] },
     { id: "shopee", name: "Shopee", slug: "shopee", active: true, ai_keywords: ["shopee", "entrega", "pacote"] },
+    { id: "tguianet", name: "TGuiaNet", slug: "tguianet", active: true, ai_keywords: [] as string[] },
+    { id: "joias", name: "empresa de joias", slug: "empresa-de-joias", active: true, ai_keywords: [] as string[] },
+    { id: "restaurante", name: "Restaurante", slug: "restaurante", active: true, ai_keywords: [] as string[] },
   ];
-  assert(matchEntityRecord(entities, "gastei 20 no posto", "pessoal").id === "pessoal", "entidade do topo prevalece");
-  assert(matchEntityRecord(entities, "entrega da shopee", "pessoal").id === "shopee", "nome explícito de outra entidade pode sobrescrever");
-  assert(matchEntityRecord(entities, "pacote da rota", null).id === "shopee", "keyword da entidade");
+
+  const entityIdOf = (name: string) => entities.find((item) => item.name === name)?.id ?? null;
+  const categoryFor = (phrase: string, kind: "income" | "expense" = "expense") =>
+    nameOf(resolveCategoryMatch(catalog, kind, phrase).id);
+  const acceptedEntity = (phrase: string, preferred?: string | null) =>
+    acceptedEntityId(matchEntityRecord(entities, phrase, preferred));
+
+  assert(categoryFor("padaria r$ 10") === "Alimentação", "padaria r$ 10 → Alimentação");
+  assert(acceptedEntity("padaria r$ 10") === null, "padaria r$ 10 → entidade null");
+
+  assert(categoryFor("padaria r$ 10 da Shopee") === "Alimentação", "padaria Shopee → Alimentação");
+  assert(acceptedEntity("padaria r$ 10 da Shopee") === "shopee", "padaria Shopee → Shopee");
+
+  assert(categoryFor("gasolina 150") === "Combustível", "gasolina 150 → Combustível");
+  assert(acceptedEntity("gasolina 150") === null, "gasolina 150 → entidade null");
+
+  assert(categoryFor("gasolina 150 Shopee") === "Combustível", "gasolina Shopee → Combustível");
+  assert(acceptedEntity("gasolina 150 Shopee") === "shopee", "gasolina Shopee → Shopee");
+
+  assert(categoryFor("meta ads 800 tguianet") === "Marketing / Publicidade", "meta ads tguianet → Marketing");
+  assert(acceptedEntity("meta ads 800 tguianet") === "tguianet", "meta ads tguianet → TGuiaNet");
+
+  assert(categoryFor("troquei dois pneus por 900") === "Manutenção", "pneus → Manutenção");
+  assert(acceptedEntity("troquei dois pneus por 900") === null, "pneus → entidade null");
+
+  assert(categoryFor("troquei dois pneus da empresa de joias por 900") === "Manutenção", "pneus joias → Manutenção");
+  assert(acceptedEntity("troquei dois pneus da empresa de joias por 900") === "joias", "pneus joias → empresa de joias");
+
+  const preferredJoias = matchEntityRecord(entities, "padaria r$ 10", "joias");
+  assert(preferredJoias.source === "preferred" && preferredJoias.confidence <= 0.3, "topo é baixa confiança");
+  assert(acceptedEntityId(preferredJoias) === null, "padaria com joias no topo NÃO aplica entidade");
+
+  assert(acceptedEntity("padaria 35 restaurante") === "restaurante", "padaria restaurante → Restaurante");
+  assert(acceptedEntity("comprei pneu 900 para a Shopee") === "shopee", "pneu Shopee → Shopee");
+
+  const duplicates = [
+    ...entities,
+    { id: "tguianet-dup", name: "tguianet", slug: "tguianet-dup", active: true, ai_keywords: [] as string[] },
+  ];
+  const duplicateMatch = matchEntityRecord(duplicates, "meta ads 800 tguianet", null);
+  assert(duplicateMatch.ambiguous && acceptedEntityId(duplicateMatch) === null, "tguianet duplicado fica ambíguo");
+
+  assert(matchEntityRecord(entities, "gastei 20 no posto", "pessoal").source === "preferred", "sem menção: só preferred baixa");
+  assert(acceptedEntityId(matchEntityRecord(entities, "entrega da shopee", "pessoal")) === "shopee", "nome explícito prevalece sobre o topo");
+  assert(acceptedEntity("pacote da rota") === "shopee", "keyword exclusiva da entidade");
+  assert(entityIdOf("TGuiaNet") === "tguianet", "catálogo de teste estável");
 
   console.log("categorias/entidades semanticas: frases, confiança e isolamento ok");
 }

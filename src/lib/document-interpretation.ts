@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { isValidDateIso, parseLooseDate } from "./date";
 import { parseBRLMoney, roundMoney } from "./money";
-import { blendSemanticConfidence, matchEntityRecord, resolveCategoryMatch } from "./categories";
+import { acceptedEntityId, blendSemanticConfidence, matchEntityRecord, resolveCategoryMatch } from "./categories";
 
 export const DOCUMENT_INTERPRETATION_VERSION = 1;
 
@@ -192,7 +192,7 @@ export function matchEntityByName<T extends { id: string; name: string; active?:
     [suggestedName, extraHint].filter(Boolean).join(" "),
     preferredId,
   );
-  return { id: match.id, ambiguous: match.ambiguous };
+  return { id: acceptedEntityId(match), ambiguous: match.ambiguous };
 }
 
 export function pickAccountForEntity<T extends { id: string; entity_id: string; active?: boolean }>(
@@ -242,7 +242,7 @@ export function resolveDocumentSuggestion(
   const entityMatch = matchEntityByName(
     context.entities,
     entityName,
-    context.preferredEntityId ?? null,
+    null,
     parsed.description,
   );
   const competence = parseLooseDate(parsed.competence_date ?? null);
