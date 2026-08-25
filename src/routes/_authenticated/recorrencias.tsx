@@ -295,7 +295,7 @@ function RecurringDialog({
     setBusy(true);
     const { error } = editing
       ? await supabase.rpc("update_recurring_transaction", { p_id: editing.id, ...payload } as never)
-      : await supabase.rpc("create_recurring_transaction", payload);
+      : await supabase.rpc("create_recurring_transaction", payload as never);
     setBusy(false);
     if (error) { toast.error(error.message); return; }
     toast.success(
