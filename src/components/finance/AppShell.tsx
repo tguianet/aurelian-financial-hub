@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   LayoutDashboard,
@@ -33,23 +33,24 @@ import { QuickDocumentUpload, type UploadedDocument } from "./QuickDocumentUploa
 import { PwaInstallButton } from "./PwaInstallButton";
 import { ALL } from "@/lib/finance";
 
-const QUICK_ENTRY_SESSION_KEY = "aurelian_quick_entry_opened";
+const PRIMARY_NAV = [
+  { to: "/dashboard", label: "Início", icon: LayoutDashboard },
+  { to: "/lancamentos", label: "Movimentações", icon: ArrowLeftRight },
+  { to: "/contas", label: "Meu dinheiro", icon: Wallet },
+  { to: "/entidades", label: "Pessoas e empresas", icon: Building2 },
+  { to: "/consultor", label: "Aurelian IA", icon: BrainCircuit },
+] as const;
 
-const NAV = [
-  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/consultor", label: "Consultor IA", icon: BrainCircuit },
-  { to: "/lancamentos", label: "Lançamentos", icon: ArrowLeftRight },
-  { to: "/documentos", label: "Documentos", icon: FolderOpen },
-  { to: "/entidades", label: "Empresas", icon: Building2 },
-  { to: "/categorias", label: "Categorias", icon: Tags },
-  { to: "/contas", label: "Contas", icon: Wallet },
+const SECONDARY_NAV = [
+  { to: "/pendencias", label: "Contas a pagar e receber", icon: CalendarClock },
   { to: "/cartoes", label: "Cartões", icon: CreditCard },
-  { to: "/pendencias", label: "A pagar / receber", icon: CalendarClock },
-  { to: "/recorrencias", label: "Recorrências", icon: Repeat2 },
-  { to: "/orcamento", label: "Orçamento", icon: Target },
-  { to: "/reservas", label: "Reservas", icon: PiggyBank },
-  { to: "/projecao", label: "Projeção", icon: LineChart },
+  { to: "/documentos", label: "Documentos", icon: FolderOpen },
+  { to: "/recorrencias", label: "Pagamentos recorrentes", icon: Repeat2 },
+  { to: "/orcamento", label: "Planejamento mensal", icon: Target },
+  { to: "/reservas", label: "Dinheiro reservado", icon: PiggyBank },
+  { to: "/projecao", label: "Como meu dinheiro vai ficar", icon: LineChart },
   { to: "/relatorios", label: "Relatórios", icon: FileBarChart },
+  { to: "/categorias", label: "Organização por categorias", icon: Tags },
   { to: "/familia", label: "Família", icon: Users },
   { to: "/whatsapp", label: "WhatsApp", icon: MessageCircle },
 ] as const;
@@ -60,33 +61,39 @@ function Brand() {
       <span className="gold-gradient flex size-9 items-center justify-center rounded-xl text-base font-bold text-primary-foreground">A</span>
       <span className="leading-tight">
         <span className="block font-display text-sm font-semibold tracking-wide">Aurelian Finance</span>
-        <span className="block text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Painel privado</span>
+        <span className="block text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Seu dinheiro, sem complicação</span>
       </span>
     </div>
   );
 }
 
-function NavList({ onNavigate }: { onNavigate?: () => void }) {
+function NavItem({ to, label, icon: Icon, onNavigate }: { to: string; label: string; icon: typeof LayoutDashboard; onNavigate?: () => void }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const active = pathname === to;
+  return (
+    <Link
+      to={to}
+      onClick={onNavigate}
+      className={cn(
+        "flex min-h-11 items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors",
+        active ? "bg-primary/12 font-medium text-primary" : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground",
+      )}
+    >
+      <Icon className="size-4 shrink-0" />
+      {label}
+    </Link>
+  );
+}
+
+function NavList({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <nav className="flex flex-col gap-1">
-      {NAV.map(({ to, label, icon: Icon }) => {
-        const active = pathname === to;
-        return (
-          <Link
-            key={to}
-            to={to}
-            onClick={onNavigate}
-            className={cn(
-              "flex min-h-11 items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors",
-              active ? "bg-primary/12 font-medium text-primary" : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground",
-            )}
-          >
-            <Icon className="size-4 shrink-0" />
-            {label}
-          </Link>
-        );
-      })}
+      {PRIMARY_NAV.map((item) => <NavItem key={item.to} {...item} onNavigate={onNavigate} />)}
+
+      <div className="mt-5 px-3 pb-1 text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground/70">
+        Mais ferramentas
+      </div>
+      {SECONDARY_NAV.map((item) => <NavItem key={item.to} {...item} onNavigate={onNavigate} />)}
     </nav>
   );
 }
@@ -95,11 +102,11 @@ function EntitySelector() {
   const { data, entityId, setEntityId } = useEntityScope();
   return (
     <Select value={entityId} onValueChange={setEntityId}>
-      <SelectTrigger className="h-10 w-full border-border bg-surface-2 text-sm sm:h-9 sm:w-[190px]">
-        <SelectValue placeholder="Entidade" />
+      <SelectTrigger className="h-10 w-full border-border bg-surface-2 text-sm sm:h-9 sm:w-[220px]">
+        <SelectValue placeholder="Ver dinheiro de..." />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value={ALL}>Todas as entidades</SelectItem>
+        <SelectItem value={ALL}>Tudo junto</SelectItem>
         {data.entities.map((e) => <SelectItem key={e.id} value={e.id}>{e.name}{e.kind === "personal" ? " (pessoal)" : ""}</SelectItem>)}
       </SelectContent>
     </Select>
@@ -112,22 +119,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [quickEntryOpen, setQuickEntryOpen] = useState(false);
   const [documents, setDocuments] = useState<UploadedDocument[]>([]);
 
-  useEffect(() => {
-    try {
-      if (sessionStorage.getItem(QUICK_ENTRY_SESSION_KEY) === "1") return;
-      sessionStorage.setItem(QUICK_ENTRY_SESSION_KEY, "1");
-      setQuickEntryOpen(true);
-    } catch {
-      setQuickEntryOpen(true);
-    }
-  }, []);
-
   const signOut = async () => {
-    try {
-      sessionStorage.removeItem(QUICK_ENTRY_SESSION_KEY);
-    } catch {
-      // Storage pode estar indisponível em ambientes privados/restritos.
-    }
     await supabase.auth.signOut();
     navigate({ to: "/auth" });
   };
@@ -138,10 +130,10 @@ export function AppShell({ children }: { children: ReactNode }) {
         <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] overflow-y-auto rounded-2xl border-primary/25 bg-background p-2 sm:max-h-[90vh] sm:max-w-xl sm:p-5">
           <DialogHeader className="px-2 pt-2 sm:px-1 sm:pt-1">
             <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
-              <Sparkles className="size-5 shrink-0 text-primary" /> Lançamento rápido
+              <Sparkles className="size-5 shrink-0 text-primary" /> Registrar movimentação
             </DialogTitle>
             <DialogDescription className="text-xs sm:text-sm">
-              Fale, digite, fotografe ou importe um documento. O Aurelian mantém tudo privado.
+              Conte o que aconteceu do seu jeito. Você pode digitar, falar ou mandar uma foto/PDF e conferir tudo antes de salvar.
             </DialogDescription>
           </DialogHeader>
           <MobileQuickEntry documents={documents} />
@@ -175,14 +167,12 @@ export function AppShell({ children }: { children: ReactNode }) {
               </Sheet>
 
               <Button
-                variant="outline"
                 size="sm"
-                className="h-10 min-w-0 flex-1 gap-2 border-primary/30 bg-primary/5 px-3 text-primary hover:bg-primary/10 sm:h-9 sm:flex-none"
+                className="h-10 min-w-0 flex-1 gap-2 px-4 sm:h-9 sm:flex-none"
                 onClick={() => setQuickEntryOpen(true)}
               >
                 <Sparkles className="size-4 shrink-0" />
-                <span className="truncate sm:hidden">Lançar</span>
-                <span className="hidden sm:inline">Lançamento rápido</span>
+                <span className="truncate">+ Registrar</span>
               </Button>
 
               <div className="hidden sm:block"><PwaInstallButton /></div>
