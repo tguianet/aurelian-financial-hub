@@ -32,6 +32,7 @@ type Draft = {
   entityId: string | null;
   categoryId: string | null;
   accountId: string | null;
+  creditCardId: string | null;
   paymentMethod: PaymentMethod;
   description: string;
   originalText: string;
@@ -83,7 +84,7 @@ function parseInstallment(text: string) {
   if (!match) return null;
   const count = Number(match[1]);
   const installmentAmount = parseBrazilianNumber(match[2] ?? "");
-  if (!Number.isInteger(count) || count < 2 || count > 60 || !installmentAmount) return null;
+  if (!Number.isInteger(count) || count < 2 || count > 48 || !installmentAmount) return null;
   return {
     count,
     installmentAmount,
@@ -115,10 +116,10 @@ function inferPending(text: string, kind: Draft["kind"]) {
   return /(para pagar|a pagar|vou pagar|ainda vou pagar|nao paguei)/.test(n);
 }
 
-function inferPaymentMethod(text: string): PaymentMethod {
+function inferPaymentMethod(text: string, kind: Draft["kind"]): PaymentMethod {
   const n = normalize(text);
   if (/\bpix\b/.test(n)) return "pix";
-  if (/cartao de credito|credito|no credito/.test(n)) return "credit";
+  if (kind === "expense" && /cartao de credito|credito|no credito/.test(n)) return "credit";
   if (/cartao de debito|debito|no debito/.test(n)) return "debit";
   if (/\bboleto\b/.test(n)) return "boleto";
   if (/transferencia|transferi|ted|doc bancario/.test(n)) return "transfer";
@@ -174,26 +175,33 @@ export function MobileQuickEntry({ documents = [] }: Props) {
 
   const accountForEntity = (entityId: string | null, preferredAccountId?: string | null, originalText?: string) => {
     if (!entityId) return null;
-    const entityAccounts = data.accounts.filter((account) => account.entity_id === entityId);
+    const activeAccounts = data.accounts.filter((account) => account.entity_id === entityId && account.active);
     if (originalText) {
       const normalizedText = normalize(originalText);
-      const mentioned = entityAccounts
-        .filter((account) => account.active)
-        .sort((a, b) => Math.max(b.name.length, b.bank?.length ?? 0) - Math.max(a.name.length, a.bank?.length ?? 0))
-        .find((account) => {
-          const name = normalize(account.name);
-          const bank = normalize(account.bank ?? "");
-          return (name.length >= 3 && normalizedText.includes(name)) || (bank.length >= 3 && normalizedText.includes(bank));
-        });
-      if (mentioned) return mentioned.id;
+      const mentioned = activeAccounts.filter((account) => {
+        const name = normalize(account.name);
+        const bank = normalize(account.bank ?? "");
+        return (name.length >= 3 && normalizedText.includes(name)) || (bank.length >= 3 && normalizedText.includes(bank));
+      });
+      if (mentioned.length === 1) return mentioned[0]?.id ?? null;
     }
-    const preferred = preferredAccountId
-      ? entityAccounts.find((account) => account.id === preferredAccountId && account.active)
-      : undefined;
-    const next = preferred
-      ?? entityAccounts.find((account) => account.active)
-      ?? entityAccounts[0];
-    return next?.id ?? null;
+    if (preferredAccountId && activeAccounts.some((account) => account.id === preferredAccountId)) return preferredAccountId;
+    return activeAccounts.length === 1 ? activeAccounts[0]?.id ?? null : null;
+  };
+
+  const cardForEntity = (entityId: string | null, originalText?: string) => {
+    if (!entityId) return null;
+    const activeCards = data.cards.filter((card) => card.entity_id === entityId && card.active);
+    if (originalText) {
+      const normalizedText = normalize(originalText);
+      const mentioned = activeCards.filter((card) => {
+        const name = normalize(card.name);
+        const brand = normalize(card.brand ?? "");
+        return (name.length >= 3 && normalizedText.includes(name)) || (brand.length >= 3 && normalizedText.includes(brand));
+      });
+      if (mentioned.length === 1) return mentioned[0]?.id ?? null;
+    }
+    return activeCards.length === 1 ? activeCards[0]?.id ?? null : null;
   };
 
   const presentDraft = (result: Draft, resolution: QuickEntryResolution) => {
@@ -228,11 +236,8 @@ export function MobileQuickEntry({ documents = [] }: Props) {
     confidence?: number;
   }, originalText: string): { draft: Draft; resolution: QuickEntryResolution } | null => {
     if (!ai?.kind || !ai.amount || Number(ai.amount) <= 0 || (ai.confidence ?? 0) < 0.5) return null;
-    const resolved = resolveFields(
-      originalText,
-      ai.kind,
-      `${ai.category_name ?? ""} ${ai.description ?? ""} ${ai.vendor ?? ""} ${originalText}`,
-    );
+    const resolved = resolveFields(originalText, ai.kind, `${ai.category_name ?? ""} ${ai.description ?? ""} ${ai.vendor ?? ""} ${originalText}`);
+    const paymentMethod = inferPaymentMethod(originalText, ai.kind);
     return {
       resolution: resolved,
       draft: {
@@ -240,8 +245,9 @@ export function MobileQuickEntry({ documents = [] }: Props) {
         amount: roundMoney(Number(ai.amount)),
         entityId: resolved.entityId,
         categoryId: resolved.categoryId,
-        accountId: accountForEntity(resolved.entityId, ai.account_id, originalText),
-        paymentMethod: inferPaymentMethod(originalText),
+        accountId: paymentMethod === "credit" ? null : accountForEntity(resolved.entityId, ai.account_id, originalText),
+        creditCardId: paymentMethod === "credit" ? cardForEntity(resolved.entityId, originalText) : null,
+        paymentMethod,
         description: ai.description?.trim() || ai.vendor?.trim() || originalText || "Documento financeiro",
         originalText,
         parser: "openai",
@@ -259,6 +265,7 @@ export function MobileQuickEntry({ documents = [] }: Props) {
     const kind = inferKind(originalText);
     const resolved = resolveFields(originalText, kind);
     const entity = resolved.entityId ? data.entities.find((item) => item.id === resolved.entityId) : undefined;
+    const paymentMethod = inferPaymentMethod(originalText, kind);
 
     let stripped = originalText;
     if (installment) stripped = stripped.replace(installment.matchedText, "");
@@ -271,8 +278,9 @@ export function MobileQuickEntry({ documents = [] }: Props) {
       amount,
       entityId: resolved.entityId,
       categoryId: resolved.categoryId,
-      accountId: accountForEntity(resolved.entityId, null, originalText),
-      paymentMethod: inferPaymentMethod(originalText),
+      accountId: paymentMethod === "credit" ? null : accountForEntity(resolved.entityId, null, originalText),
+      creditCardId: paymentMethod === "credit" ? cardForEntity(resolved.entityId, originalText) : null,
+      paymentMethod,
       description: stripped || resolved.originalHint || (kind === "income" ? "Entrada rápida" : "Saída rápida"),
       originalText,
       parser: "local",
@@ -280,8 +288,7 @@ export function MobileQuickEntry({ documents = [] }: Props) {
       vendor: stripped || resolved.originalHint || null,
       pending: inferPending(originalText, kind),
     };
-    const skipAi = (!resolved.needsEntity && !resolved.needsCategory)
-      || (!resolved.needsCategory && resolved.categoryMatch.confidence >= 0.8);
+    const skipAi = (!resolved.needsEntity && !resolved.needsCategory) || (!resolved.needsCategory && resolved.categoryMatch.confidence >= 0.8);
     return { result, resolved, skipAi };
   };
 
@@ -309,19 +316,10 @@ export function MobileQuickEntry({ documents = [] }: Props) {
     const { data: sessionData } = await supabase.auth.getSession();
     const token = sessionData.session?.access_token;
     const readyDocuments = documents.filter((item) => item.id);
-    if (readyDocuments.length > 1) {
-      throw new Error("Para evitar lançar o documento errado, deixe apenas um anexo no lançamento rápido.");
-    }
+    if (readyDocuments.length > 1) throw new Error("Para evitar lançar o documento errado, deixe apenas um anexo no lançamento rápido.");
     const document = readyDocuments[0];
-    if (!token || !document?.id) {
-      throw new Error("O documento precisa estar catalogado antes da leitura.");
-    }
-    return requestDocumentInterpretation({
-      documentId: document.id,
-      token,
-      text: originalText,
-      selectedEntityId: selectedEntityId !== "all" ? selectedEntityId : null,
-    });
+    if (!token || !document?.id) throw new Error("O documento precisa estar catalogado antes da leitura.");
+    return requestDocumentInterpretation({ documentId: document.id, token, text: originalText, selectedEntityId: selectedEntityId !== "all" ? selectedEntityId : null });
   };
 
   const interpret = async (value = text) => {
@@ -338,47 +336,29 @@ export function MobileQuickEntry({ documents = [] }: Props) {
         const result = await documentInterpret(originalText);
         const document = documents.filter((item) => item.id)[0];
         setInterpreting(false);
-        if (!document?.id) {
-          toast.error("Documento sem metadata. Recatalogue em Documentos.");
-          return;
-        }
+        if (!document?.id) { toast.error("Documento sem metadata. Recatalogue em Documentos."); return; }
         setReview({ documentId: document.id, suggestion: result.interpretation });
         toast.success("Documento lido. Confira os dados antes de confirmar.");
         return;
       } catch (error) {
         setInterpreting(false);
         const code = (error as Error & { code?: string }).code;
-        if (code === "processing_in_progress") {
-          toast.message("Este documento já está sendo lido. Aguarde e tente de novo.");
-        } else {
-          toast.error(error instanceof Error ? error.message : "Não consegui ler o documento.");
-        }
+        if (code === "processing_in_progress") toast.message("Este documento já está sendo lido. Aguarde e tente de novo.");
+        else toast.error(error instanceof Error ? error.message : "Não consegui ler o documento.");
         return;
       }
     }
 
     const local = localInterpret(originalText);
-    if (local?.skipAi) {
-      presentDraft(local.result, local.resolved);
-      setInterpreting(false);
-      return;
-    }
+    if (local?.skipAi) { presentDraft(local.result, local.resolved); setInterpreting(false); return; }
     try {
       const ai = await aiInterpret(originalText);
-      if (ai) {
-        presentDraft(ai.draft, ai.resolution);
-        setInterpreting(false);
-        return;
-      }
+      if (ai) { presentDraft(ai.draft, ai.resolution); setInterpreting(false); return; }
     } catch (error) {
       console.warn("Fallback OpenAI indisponível", error);
     }
     setInterpreting(false);
-    if (local?.result) {
-      presentDraft(local.result, local.resolved);
-      toast.message("Usei a interpretação local. Confira antes de confirmar.");
-      return;
-    }
+    if (local?.result) { presentDraft(local.result, local.resolved); toast.message("Usei a interpretação local. Confira antes de confirmar."); return; }
     toast.error("Não consegui interpretar. Ajuste o texto ou anexe um documento.");
   };
 
@@ -408,16 +388,37 @@ export function MobileQuickEntry({ documents = [] }: Props) {
     if (!draft || !user) return;
     if (!canWrite) { toast.error("Seu acesso é somente leitura."); return; }
     if (!draft.entityId) { toast.error("Escolha de quem é essa movimentação."); return; }
-    if (!draft.accountId) { toast.error("Escolha em qual conta o dinheiro entrou ou saiu."); return; }
+    const isCreditPurchase = draft.kind === "expense" && draft.paymentMethod === "credit";
+    if (isCreditPurchase && !draft.creditCardId) { toast.error("Escolha qual cartão de crédito foi usado."); return; }
+    if (!isCreditPurchase && !draft.accountId) { toast.error("Escolha em qual conta o dinheiro entrou ou saiu."); return; }
     if (saving) return;
-    if (!idempotencyKeyRef.current) idempotencyKeyRef.current = newIdempotencyKey();
-    setSaving(true);
-    const today = localDateIso();
-    const txDate = draft.documentDate && isValidDateIso(draft.documentDate) ? draft.documentDate : today;
-    const source = draft.parser === "openai" ? (documents.length ? "document_openai" : "mobile_openai") : "mobile_quick_entry";
-    const installments = draft.installmentCount && draft.installmentCount > 1 ? draft.installmentCount : 1;
-    const isPending = Boolean(draft.pending);
 
+    setSaving(true);
+    const txDate = draft.documentDate && isValidDateIso(draft.documentDate) ? draft.documentDate : localDateIso();
+    const installments = draft.installmentCount && draft.installmentCount > 1 ? draft.installmentCount : 1;
+
+    if (isCreditPurchase) {
+      const totalAmount = roundMoney(draft.totalAmount ?? draft.amount * installments);
+      const { error } = await supabase.rpc("create_credit_card_purchase", {
+        _credit_card_id: draft.creditCardId,
+        _category_id: draft.categoryId ?? undefined,
+        _description: draft.description,
+        _total_amount: totalAmount,
+        _purchase_date: txDate,
+        _installments: installments,
+      } as never);
+      setSaving(false);
+      if (error) { toast.error(rpcErrorMessage(error, "Não foi possível registrar a compra no cartão.")); return; }
+      toast.success("Compra no cartão registrada sem duplicar a despesa quando a fatura for paga.");
+      setDraft(null);
+      setText("");
+      refresh();
+      return;
+    }
+
+    if (!idempotencyKeyRef.current) idempotencyKeyRef.current = newIdempotencyKey();
+    const source = draft.parser === "openai" ? (documents.length ? "document_openai" : "mobile_openai") : "mobile_quick_entry";
+    const isPending = Boolean(draft.pending);
     const { data: txId, error } = await supabase.rpc("create_transaction", {
       p_entity_id: draft.entityId,
       p_account_id: draft.accountId,
@@ -429,7 +430,7 @@ export function MobileQuickEntry({ documents = [] }: Props) {
       p_payment_method: draft.paymentMethod,
       p_competence_date: txDate,
       p_due_date: txDate,
-      p_status: isPending ? "pending" : "paid",
+      p_status: isPending ? "pending" : draft.kind === "income" ? "received" : "paid",
       p_notes: `Comando original: ${draft.originalText || "Documento anexado"}${draft.vendor ? ` | Documento: ${draft.vendor}` : ""}`,
       p_installments: installments,
       p_amount_mode: installments > 1 ? "each" : "total",
@@ -437,25 +438,22 @@ export function MobileQuickEntry({ documents = [] }: Props) {
       p_source: source,
       p_idempotency_key: idempotencyKeyRef.current,
     } as never);
-    if (error || !txId) {
-      setSaving(false);
-      toast.error(rpcErrorMessage(error, "Não foi possível confirmar o lançamento."));
-      return;
-    }
-
     setSaving(false);
+    if (error || !txId) { toast.error(rpcErrorMessage(error, "Não foi possível confirmar o lançamento.")); return; }
+
     idempotencyKeyRef.current = null;
-    if (installments > 1) {
-      toast.success(`${installments} parcelas criadas no contas a pagar.`);
-    } else {
-      toast.success(isPending ? (draft.kind === "income" ? "Conta a receber criada." : "Conta a pagar criada.") : "Lançamento confirmado.");
-    }
+    if (installments > 1) toast.success(`${installments} parcelas criadas no contas a pagar.`);
+    else toast.success(isPending ? (draft.kind === "income" ? "Conta a receber criada." : "Conta a pagar criada.") : "Lançamento confirmado.");
     setDraft(null);
     setText("");
     refresh();
   };
 
   const account = draft ? data.accounts.find((a) => a.id === draft.accountId) : null;
+  const card = draft ? data.cards.find((c) => c.id === draft.creditCardId) : null;
+  const isCreditPurchase = draft?.kind === "expense" && draft.paymentMethod === "credit";
+  const entityAccounts = draft?.entityId ? data.accounts.filter((a) => a.entity_id === draft.entityId && a.active) : [];
+  const entityCards = draft?.entityId ? data.cards.filter((c) => c.entity_id === draft.entityId && c.active) : [];
 
   return (
     <section className="rounded-2xl border border-primary/25 bg-gradient-to-b from-primary/10 to-card p-4 shadow-sm md:p-5">
@@ -466,18 +464,7 @@ export function MobileQuickEntry({ documents = [] }: Props) {
       </div>
 
       {review ? (
-        <DocumentReviewDialog
-          key={review.documentId}
-          open
-          documentId={review.documentId}
-          suggestion={review.suggestion}
-          onOpenChange={(open) => { if (!open) setReview(null); }}
-          onConfirmed={() => {
-            setReview(null);
-            setText("");
-            refresh();
-          }}
-        />
+        <DocumentReviewDialog key={review.documentId} open documentId={review.documentId} suggestion={review.suggestion} onOpenChange={(open) => { if (!open) setReview(null); }} onConfirmed={() => { setReview(null); setText(""); refresh(); }} />
       ) : null}
 
       {pending ? (
@@ -500,12 +487,7 @@ export function MobileQuickEntry({ documents = [] }: Props) {
             const entityId = pending.resolution.needsEntity ? choice.entityId : pending.draft.entityId;
             const categoryId = pending.resolution.needsCategory ? choice.categoryId : pending.draft.categoryId;
             if (choice.remember && canWrite && pending.resolution.hint.length >= 3) {
-              const args: {
-                p_normalized_hint: string;
-                p_original_hint: string;
-                p_entity_id?: string;
-                p_category_id?: string;
-              } = {
+              const args: { p_normalized_hint: string; p_original_hint: string; p_entity_id?: string; p_category_id?: string } = {
                 p_normalized_hint: pending.resolution.hint,
                 p_original_hint: pending.resolution.originalHint || pending.resolution.hint,
               };
@@ -516,12 +498,14 @@ export function MobileQuickEntry({ documents = [] }: Props) {
                 else refresh();
               });
             }
+            const paymentMethod = pending.draft.paymentMethod;
             setPending(null);
             setDraft({
               ...pending.draft,
               entityId,
               categoryId,
-              accountId: accountForEntity(entityId, pending.draft.accountId, pending.draft.originalText),
+              accountId: paymentMethod === "credit" ? null : accountForEntity(entityId, pending.draft.accountId, pending.draft.originalText),
+              creditCardId: paymentMethod === "credit" ? cardForEntity(entityId, pending.draft.originalText) : null,
             });
           }}
         />
@@ -549,52 +533,63 @@ export function MobileQuickEntry({ documents = [] }: Props) {
             <div><span className="block text-[11px] text-muted-foreground">{draft.installmentCount ? "Valor da parcela" : "Valor"}</span><strong className={draft.kind === "income" ? "text-success" : "text-destructive"}>{brl(draft.amount)}</strong></div>
             <div className="col-span-2">
               <span className="block text-[11px] text-muted-foreground">De quem é</span>
-              <Select
-                value={draft.entityId ?? ""}
-                onValueChange={(value) => {
-                  const chosen = data.entities.find((item) => item.id === value);
-                  const nextAccount = chosen
-                    ? data.accounts.find((item) => item.entity_id === chosen.id && item.active)
-                      ?? data.accounts.find((item) => item.entity_id === chosen.id)
-                    : undefined;
-                  setDraft({ ...draft, entityId: value, accountId: nextAccount?.id ?? null });
-                }}
-              >
+              <Select value={draft.entityId ?? ""} onValueChange={(value) => {
+                const paymentMethod = draft.paymentMethod;
+                setDraft({ ...draft, entityId: value, accountId: paymentMethod === "credit" ? null : accountForEntity(value, null, draft.originalText), creditCardId: paymentMethod === "credit" ? cardForEntity(value, draft.originalText) : null });
+              }}>
                 <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Escolha" /></SelectTrigger>
-                <SelectContent>
-                  {data.entities.filter((item) => item.active).map((item) => (
-                    <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
-                  ))}
-                </SelectContent>
+                <SelectContent>{data.entities.filter((item) => item.active).map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}</SelectContent>
               </Select>
-              {!draft.entityId ? (
-                <p className="mt-1 text-[11px] text-muted-foreground">Não consegui identificar. Escolha antes de confirmar.</p>
-              ) : null}
+              {!draft.entityId ? <p className="mt-1 text-[11px] text-muted-foreground">Não consegui identificar. Escolha antes de confirmar.</p> : null}
             </div>
             <div>
               <span className="block text-[11px] text-muted-foreground">Organizar em</span>
-              <Select
-                value={draft.categoryId ?? ""}
-                onValueChange={(value) => setDraft({ ...draft, categoryId: value })}
-              >
+              <Select value={draft.categoryId ?? ""} onValueChange={(value) => setDraft({ ...draft, categoryId: value })}>
                 <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Escolha a categoria" /></SelectTrigger>
-                <SelectContent>
-                  {selectableCategories(data.categories, draft.kind).map((item) => (
-                    <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
-                  ))}
-                </SelectContent>
+                <SelectContent>{selectableCategories(data.categories, draft.kind).map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div><span className="block text-[11px] text-muted-foreground">Situação</span><strong>{draft.pending ? (draft.kind === "income" ? "Ainda vou receber" : "Ainda vou pagar") : (draft.kind === "income" ? "Já recebi" : "Já paguei")}</strong></div>
             <div><span className="block text-[11px] text-muted-foreground">Quando</span><strong>{draft.documentDate ?? "Hoje"}</strong></div>
-            <div><span className="block text-[11px] text-muted-foreground">Como</span><strong>{paymentMethodLabel(draft.paymentMethod)}</strong></div>
+            <div>
+              <span className="block text-[11px] text-muted-foreground">Como</span>
+              <Select value={draft.paymentMethod} onValueChange={(value) => {
+                const paymentMethod = value as PaymentMethod;
+                setDraft({ ...draft, paymentMethod, accountId: paymentMethod === "credit" ? null : accountForEntity(draft.entityId, draft.accountId, draft.originalText), creditCardId: paymentMethod === "credit" ? cardForEntity(draft.entityId, draft.originalText) : null });
+              }}>
+                <SelectTrigger className="mt-1 h-9"><SelectValue>{paymentMethodLabel(draft.paymentMethod)}</SelectValue></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="pix">Pix</SelectItem><SelectItem value="cash">Dinheiro</SelectItem><SelectItem value="debit">Débito</SelectItem>
+                  {draft.kind === "expense" ? <SelectItem value="credit">Cartão de crédito</SelectItem> : null}
+                  <SelectItem value="boleto">Boleto</SelectItem><SelectItem value="transfer">Transferência</SelectItem><SelectItem value="other">Outro</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             {draft.vendor ? <div className="col-span-2"><span className="block text-[11px] text-muted-foreground">O que foi</span><strong>{draft.vendor}</strong></div> : null}
             {draft.installmentCount ? <><div><span className="block text-[11px] text-muted-foreground">Parcelas</span><strong>{draft.installmentCount}x</strong></div><div><span className="block text-[11px] text-muted-foreground">Total</span><strong>{brl(draft.totalAmount ?? draft.amount * draft.installmentCount)}</strong></div></> : null}
-            <div className="col-span-2"><span className="block text-[11px] text-muted-foreground">Conta</span><strong>{account?.name ?? "Escolha uma conta"}</strong></div>
+            {isCreditPurchase ? (
+              <div className="col-span-2">
+                <span className="block text-[11px] text-muted-foreground">Cartão</span>
+                <Select value={draft.creditCardId ?? ""} onValueChange={(value) => setDraft({ ...draft, creditCardId: value })}>
+                  <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Escolha o cartão" /></SelectTrigger>
+                  <SelectContent>{entityCards.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}{item.brand ? ` · ${item.brand}` : ""}</SelectItem>)}</SelectContent>
+                </Select>
+                {!card ? <p className="mt-1 text-[11px] text-muted-foreground">Escolha o cartão para eu tratar a fatura sem duplicar essa despesa.</p> : null}
+              </div>
+            ) : (
+              <div className="col-span-2">
+                <span className="block text-[11px] text-muted-foreground">Conta</span>
+                <Select value={draft.accountId ?? ""} onValueChange={(value) => setDraft({ ...draft, accountId: value })}>
+                  <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Escolha a conta" /></SelectTrigger>
+                  <SelectContent>{entityAccounts.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}{item.bank ? ` · ${item.bank}` : ""}</SelectItem>)}</SelectContent>
+                </Select>
+                {!account ? <p className="mt-1 text-[11px] text-muted-foreground">Escolha a conta quando houver mais de uma possibilidade.</p> : null}
+              </div>
+            )}
           </div>
           <div className="mt-4 grid grid-cols-2 gap-2">
             <Button variant="ghost" className="gap-2" onClick={() => { setDraft(null); setPending(null); }}><RotateCcw className="size-4" /> Corrigir</Button>
-            <Button className="gap-2" disabled={saving || !canWrite || !draft.entityId || !draft.accountId} onClick={confirm}><Check className="size-4" /> {saving ? "Salvando..." : "Sim, confirmar"}</Button>
+            <Button className="gap-2" disabled={saving || !canWrite || !draft.entityId || (isCreditPurchase ? !draft.creditCardId : !draft.accountId)} onClick={confirm}><Check className="size-4" /> {saving ? "Salvando..." : "Sim, confirmar"}</Button>
           </div>
         </div>
       ) : null}
