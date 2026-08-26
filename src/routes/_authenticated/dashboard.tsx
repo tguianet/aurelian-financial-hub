@@ -21,7 +21,7 @@ import {
 import { addMoney } from "@/lib/money";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
-  head: () => ({ meta: [{ title: "Dashboard executivo — Aurelian Finance" }] }),
+  head: () => ({ meta: [{ title: "Início — Aurelian Finance" }] }),
   component: Dashboard,
 });
 
@@ -58,51 +58,54 @@ function Dashboard() {
   return (
     <div className="min-w-0">
       <PageHeader
-        title="Dashboard executivo"
+        title="Seu dinheiro hoje"
         subtitle={`${entityName} · ${monthLabel(ref)}`}
         action={<TransactionDialog />}
       />
 
-      {isLoading ? <p className="mb-4 text-sm text-muted-foreground">Carregando dados…</p> : null}
+      {isLoading ? <p className="mb-4 text-sm text-muted-foreground">Organizando seus dados…</p> : null}
 
       <div className="panel relative overflow-hidden p-4 sm:p-5 md:p-8">
         <div className="pointer-events-none absolute -right-24 -top-24 size-72 rounded-full bg-primary/10 blur-3xl" />
         <div className="relative flex min-w-0 flex-col gap-5 lg:flex-row lg:items-end lg:justify-between lg:gap-6">
           <div className="min-w-0">
-            <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-primary sm:text-[11px] sm:tracking-[0.22em]">Dinheiro livre — próximos 30 dias</p>
+            <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-primary sm:text-[11px] sm:tracking-[0.22em]">Você pode usar sem preocupação</p>
             <p className={`num mt-2 break-words text-[2rem] font-bold leading-tight sm:text-4xl md:text-5xl ${strictFreeCash >= 0 ? "text-gold-gradient" : "text-destructive"}`}>
               {brl(strictFreeCash)}
             </p>
             <p className="mt-2 max-w-xl text-[11px] leading-relaxed text-muted-foreground sm:text-xs">
-              Saldo realizado + recebimentos com vencimento em até 30 dias − contas a pagar em até 30 dias − parcelas de cartão em até 30 dias − reservas − recorrências ainda não geradas no período. Ocorrências já materializadas entram só em contas a pagar/receber.
+              Já descontamos do seu saldo as contas, cartões, reservas e compromissos dos próximos 30 dias, e somamos o que você ainda vai receber nesse período.
             </p>
           </div>
-          <div className="grid w-full grid-cols-2 gap-x-3 gap-y-3 text-xs sm:grid-cols-3 sm:gap-x-6 lg:w-auto lg:min-w-[430px]">
-            <Breakdown label="Saldo realizado" value={k.balance} sign="+" />
-            <Breakdown label="A receber 30d" value={receivables30} sign="+" />
-            <Breakdown label="A pagar 30d" value={payables30} sign="−" negative />
-            <Breakdown label="Cartões 30d" value={cardBills30} sign="−" negative />
-            <Breakdown label="Reservas" value={k.reserves} sign="−" negative />
-            <Breakdown label="Recorrentes 30d" value={commitments30} sign="−" negative />
-          </div>
+          <details className="w-full rounded-xl border border-border bg-background/45 p-3 text-xs lg:w-auto lg:min-w-[430px]">
+            <summary className="cursor-pointer font-medium text-foreground">Ver como chegamos nesse valor</summary>
+            <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-3 sm:grid-cols-3 sm:gap-x-6">
+              <Breakdown label="Dinheiro disponível hoje" value={k.balance} sign="+" />
+              <Breakdown label="Dinheiro a receber" value={receivables30} sign="+" />
+              <Breakdown label="Contas a pagar" value={payables30} sign="−" negative />
+              <Breakdown label="Cartões" value={cardBills30} sign="−" negative />
+              <Breakdown label="Dinheiro reservado" value={k.reserves} sign="−" negative />
+              <Breakdown label="Compromissos recorrentes" value={commitments30} sign="−" negative />
+            </div>
+          </details>
         </div>
       </div>
 
       <div className="mt-4 grid grid-cols-1 gap-3 sm:mt-5 sm:grid-cols-2 sm:gap-4 xl:grid-cols-4">
-        <KpiCard label="Saldo atual" value={brl(k.balance)} tone="gold" icon={<Wallet className="size-4" />} />
-        <KpiCard label="Entradas do mês" value={brl(k.incomeMonth)} tone="positive" icon={<TrendingUp className="size-4" />} />
-        <KpiCard label="Saídas do mês" value={brl(k.expenseMonth)} tone="negative" icon={<TrendingDown className="size-4" />} hint="Competência: compras no cartão na data da compra. Pagamento de fatura não entra." />
-        <KpiCard label="Resultado do mês" value={brl(k.resultMonth)} tone={k.resultMonth >= 0 ? "positive" : "negative"} hint={`Transferências internas ignoradas: ${brl(k.internalTransfers)}`} />
-        <KpiCard label="Total a receber" value={brl(k.receivables)} icon={<ArrowDownToLine className="size-4" />} hint={k.overdueReceivables > 0 ? `Vencidos: ${brl(k.overdueReceivables)}` : "Nada vencido"} />
-        <KpiCard label="Total a pagar" value={brl(k.payables)} tone="negative" icon={<ArrowUpFromLine className="size-4" />} hint={k.overduePayables > 0 ? `Vencidos: ${brl(k.overduePayables)}` : "Nada vencido"} />
-        <KpiCard label="Reservas alocadas" value={brl(k.reserves)} icon={<ShieldCheck className="size-4" />} />
-        <KpiCard label="Saldo projetado total" value={brl(k.projectedBalance)} tone={k.projectedBalance >= 0 ? "positive" : "negative"} icon={<LineChartIcon className="size-4" />} />
+        <KpiCard label="Tenho hoje" value={brl(k.balance)} tone="gold" icon={<Wallet className="size-4" />} />
+        <KpiCard label="Entrou este mês" value={brl(k.incomeMonth)} tone="positive" icon={<TrendingUp className="size-4" />} />
+        <KpiCard label="Saiu este mês" value={brl(k.expenseMonth)} tone="negative" icon={<TrendingDown className="size-4" />} hint="Compras no cartão entram no mês em que foram feitas. O pagamento da fatura não conta duas vezes." />
+        <KpiCard label="Sobrou no mês" value={brl(k.resultMonth)} tone={k.resultMonth >= 0 ? "positive" : "negative"} hint={`Movimentações entre suas próprias contas não alteram esse resultado: ${brl(k.internalTransfers)}`} />
+        <KpiCard label="Ainda vou receber" value={brl(k.receivables)} icon={<ArrowDownToLine className="size-4" />} hint={k.overdueReceivables > 0 ? `Tem ${brl(k.overdueReceivables)} atrasado` : "Nada atrasado"} />
+        <KpiCard label="Ainda preciso pagar" value={brl(k.payables)} tone="negative" icon={<ArrowUpFromLine className="size-4" />} hint={k.overduePayables > 0 ? `Tem ${brl(k.overduePayables)} atrasado` : "Nada atrasado"} />
+        <KpiCard label="Dinheiro reservado" value={brl(k.reserves)} icon={<ShieldCheck className="size-4" />} />
+        <KpiCard label="Como devo ficar" value={brl(k.projectedBalance)} tone={k.projectedBalance >= 0 ? "positive" : "negative"} icon={<LineChartIcon className="size-4" />} />
       </div>
 
       <div className="panel mt-4 overflow-hidden p-4 sm:mt-5 sm:p-5">
         <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-          <div><h2 className="text-sm font-semibold">Projeção de caixa</h2><p className="text-xs text-muted-foreground">7, 15, 30, 60 e 90 dias.</p></div>
-          <Link to="/projecao" className="text-xs text-primary hover:underline">Abrir projeção</Link>
+          <div><h2 className="text-sm font-semibold">Como seu dinheiro vai ficar</h2><p className="text-xs text-muted-foreground">Uma visão dos próximos 7, 15, 30, 60 e 90 dias.</p></div>
+          <Link to="/projecao" className="text-xs text-primary hover:underline">Ver detalhes</Link>
         </div>
         <div className="h-56 w-full sm:h-64">
           <ResponsiveContainer width="100%" height="100%">
@@ -111,7 +114,7 @@ function Dashboard() {
               <XAxis dataKey="label" stroke="var(--muted-foreground)" fontSize={10} tickLine={false} />
               <YAxis width={48} stroke="var(--muted-foreground)" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(v: number) => compact(v)} />
               <Tooltip contentStyle={{ background: "var(--popover)", border: "1px solid var(--border)", borderRadius: 12, fontSize: 12 }} formatter={(v: number) => brl(v)} />
-              <Area type="monotone" dataKey="balance" stroke="var(--gold)" strokeWidth={2} fill="var(--gold)" fillOpacity={0.12} name="Saldo projetado" />
+              <Area type="monotone" dataKey="balance" stroke="var(--gold)" strokeWidth={2} fill="var(--gold)" fillOpacity={0.12} name="Quanto você deve ter" />
             </AreaChart>
           </ResponsiveContainer>
         </div>
@@ -119,8 +122,8 @@ function Dashboard() {
 
       <div className="panel mt-4 p-4 sm:mt-5 sm:p-5">
         <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div><h2 className="text-sm font-semibold">Empresas e pessoal</h2><p className="text-xs text-muted-foreground">Saldo e resultado mensal por entidade.</p></div>
-          <Link to="/entidades" className="text-xs text-primary hover:underline">Gerenciar</Link>
+          <div><h2 className="text-sm font-semibold">Seu dinheiro por área</h2><p className="text-xs text-muted-foreground">Veja quanto existe no pessoal e em cada empresa.</p></div>
+          <Link to="/entidades" className="text-xs text-primary hover:underline">Organizar</Link>
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {summaries.map((s) => (
@@ -130,7 +133,7 @@ function Dashboard() {
                 <span className="truncate text-xs font-medium">{s.entity.name}</span>
               </div>
               <p className="num mt-2 break-words text-lg font-semibold">{brl(s.balance)}</p>
-              <p className="text-[11px] text-muted-foreground">Resultado <span className={s.result >= 0 ? "text-success" : "text-destructive"}>{brl(s.result)}</span></p>
+              <p className="text-[11px] text-muted-foreground">No mês <span className={s.result >= 0 ? "text-success" : "text-destructive"}>{brl(s.result)}</span></p>
             </div>
           ))}
         </div>
