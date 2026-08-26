@@ -17,6 +17,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { useEntityScope } from "@/components/finance/EntityContext";
 import { DecisionSimulator } from "@/components/finance/DecisionSimulator";
+import { PaymentPriorityPanel } from "@/components/finance/PaymentPriorityPanel";
 import { PageHeader } from "@/components/finance/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -379,6 +380,8 @@ function AurelianAdvisor() {
         projections={projections}
         onAskAurelian={(prompt) => void answerQuestion(prompt)}
       />
+
+      <PaymentPriorityPanel data={data} entityId={entityId} />
 
       <section className="panel mt-4 p-4 sm:p-5">
         <div className="flex items-start gap-3">
