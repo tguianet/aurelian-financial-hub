@@ -20,6 +20,7 @@ import {
   LogOut,
   Sparkles,
   BrainCircuit,
+  Inbox,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
@@ -35,6 +36,7 @@ import { ALL } from "@/lib/finance";
 
 const PRIMARY_NAV = [
   { to: "/dashboard", label: "Início", icon: LayoutDashboard },
+  { to: "/revisar", label: "Para revisar", icon: Inbox },
   { to: "/lancamentos", label: "Movimentações", icon: ArrowLeftRight },
   { to: "/contas", label: "Meu dinheiro", icon: Wallet },
   { to: "/entidades", label: "Pessoas e empresas", icon: Building2 },
