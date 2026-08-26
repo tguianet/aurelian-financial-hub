@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useEntityScope } from "@/components/finance/EntityContext";
+import { AssistedPaymentActions } from "@/components/finance/AssistedPaymentActions";
 import { CashPlanner } from "@/components/finance/CashPlanner";
 import { DecisionSimulator } from "@/components/finance/DecisionSimulator";
 import { PaymentPriorityPanel } from "@/components/finance/PaymentPriorityPanel";
@@ -29,6 +30,8 @@ import {
   buildScope,
   computeKpis,
   entitySummaries,
+  fmtDate,
+  isOpen,
   projection,
   today,
 } from "@/lib/finance";
@@ -43,6 +46,7 @@ export const Route = createFileRoute("/_authenticated/consultor")({
 type ChatMessage = { id: number; role: "user" | "assistant"; text: string };
 type MonthlyTotals = { income: number; expense: number; result: number };
 type CategoryTotal = { categoryId: string; name: string; total: number };
+type DueSoonItem = { description: string; amount: number; dueDate: string; entity: string; category: string };
 
 type Priority = {
   title: string;
@@ -78,6 +82,16 @@ function percentLabel(value: number | null) {
   if (value === null) return "sem base anterior";
   const sign = value > 0 ? "+" : "";
   return `${sign}${value.toFixed(1).replace(".", ",")}%`;
+}
+
+function dateOnly(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function addDays(date: Date, days: number) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
 }
 
 function AurelianAdvisor() {
@@ -147,6 +161,25 @@ function AurelianAdvisor() {
       .sort((a, b) => b.total - a.total);
   }, [currentMonth, data.categories, data.purchases, data.transactions, scope]);
 
+  const dueSoon = useMemo<DueSoonItem[]>(() => {
+    const start = dateOnly(ref);
+    const end = dateOnly(addDays(ref, 7));
+    return data.transactions
+      .filter((tx) => {
+        if (tx.kind !== "expense" || tx.deleted_at || !scope.matchesEntity(tx.entity_id) || !isOpen(tx)) return false;
+        const due = tx.due_date ?? tx.competence_date;
+        return due >= start && due <= end;
+      })
+      .sort((a, b) => (a.due_date ?? a.competence_date).localeCompare(b.due_date ?? b.competence_date))
+      .map((tx) => ({
+        description: tx.description,
+        amount: roundMoney(Number(tx.amount)),
+        dueDate: tx.due_date ?? tx.competence_date,
+        entity: data.entities.find((item) => item.id === tx.entity_id)?.name ?? "Entidade",
+        category: data.categories.find((item) => item.id === tx.category_id)?.name ?? "Sem categoria",
+      }));
+  }, [data.categories, data.entities, data.transactions, ref, scope]);
+
   const visibleSummaries = useMemo(
     () => entityId === ALL ? summaries : summaries.filter((item) => item.entity.id === entityId),
     [entityId, summaries],
@@ -161,60 +194,30 @@ function AurelianAdvisor() {
   const priorities = useMemo<Priority[]>(() => {
     const list: Priority[] = [];
     if (kpis.overduePayables > 0) {
-      list.push({
-        title: "Você tem contas vencidas",
-        body: `${brl(kpis.overduePayables)} já passaram do vencimento. Eu resolveria isso primeiro para proteger o caixa e evitar juros.`,
-        tone: "critical",
-        to: "/pendencias",
-      });
+      list.push({ title: "Você tem contas vencidas", body: `${brl(kpis.overduePayables)} já passaram do vencimento. Eu resolveria isso primeiro para proteger o caixa e evitar juros.`, tone: "critical", to: "/pendencias" });
     }
     const topAnomaly = anomalies[0];
     if (topAnomaly) {
-      list.push({
-        title: topAnomaly.title,
-        body: topAnomaly.body,
-        tone: topAnomaly.severity === "critical" ? "critical" : "warning",
-        to: "/revisar",
-      });
+      list.push({ title: topAnomaly.title, body: topAnomaly.body, tone: topAnomaly.severity === "critical" ? "critical" : "warning", to: "/revisar" });
     }
     if (kpis.freeCash < 0) {
-      list.push({
-        title: "Seu dinheiro livre está negativo",
-        body: `Considerando compromissos conhecidos e reservas, o valor livre em 30 dias está em ${brl(kpis.freeCash)}.`,
-        tone: "critical",
-        to: "/projecao",
-      });
+      list.push({ title: "Seu dinheiro livre está negativo", body: `Considerando compromissos conhecidos e reservas, o valor livre em 30 dias está em ${brl(kpis.freeCash)}.`, tone: "critical", to: "/projecao" });
     } else {
-      list.push({
-        title: "Quanto você pode usar sem apertar o caixa",
-        body: `Pelos compromissos que já estão no sistema, seu dinheiro livre estimado é ${brl(kpis.freeCash)}.`,
-        tone: "positive",
-        to: "/projecao",
-      });
+      list.push({ title: "Quanto você pode usar sem apertar o caixa", body: `Pelos compromissos que já estão no sistema, seu dinheiro livre estimado é ${brl(kpis.freeCash)}.`, tone: "positive", to: "/projecao" });
     }
     if (expenseChange !== null && expenseChange >= 20) {
-      list.push({
-        title: "Seus gastos aceleraram",
-        body: `As despesas estão ${percentLabel(expenseChange)} acima do mês anterior. Vale conferir os maiores gastos antes de assumir novos compromissos.`,
-        tone: "warning",
-        to: "/lancamentos",
-      });
+      list.push({ title: "Seus gastos aceleraram", body: `As despesas estão ${percentLabel(expenseChange)} acima do mês anterior. Vale conferir os maiores gastos antes de assumir novos compromissos.`, tone: "warning", to: "/lancamentos" });
     }
     if (topCategory && monthTotals.current.expense > 0 && topCategory.total / monthTotals.current.expense >= 0.4) {
-      list.push({
-        title: `${topCategory.name} está pesando no mês`,
-        body: `${topCategory.name} representa ${((topCategory.total / monthTotals.current.expense) * 100).toFixed(0)}% das despesas atuais.`,
-        tone: "warning",
-        to: "/lancamentos",
-      });
+      list.push({ title: `${topCategory.name} está pesando no mês`, body: `${topCategory.name} representa ${((topCategory.total / monthTotals.current.expense) * 100).toFixed(0)}% das despesas atuais.`, tone: "warning", to: "/lancamentos" });
     }
     return list.slice(0, 4);
   }, [anomalies, expenseChange, kpis.freeCash, kpis.overduePayables, monthTotals.current.expense, topCategory]);
 
   const executiveReading = useMemo(() => {
     if (kpis.overduePayables > 0 && kpis.freeCash < 0) return `O caixa de ${entityName} está pressionado: existem contas vencidas e o dinheiro livre projetado está negativo. Eu priorizaria regularizar vencidos e segurar novas saídas não essenciais.`;
-    if (kpis.overduePayables > 0) return `O caixa ainda tem margem, mas existem contas vencidas. Eu resolveria essas pendências antes de assumir novos compromissos.`;
-    if (kpis.freeCash < 0) return `O saldo atual pode parecer confortável, mas os próximos compromissos pressionam o caixa. O ponto de atenção está nos próximos 30 dias.`;
+    if (kpis.overduePayables > 0) return "O caixa ainda tem margem, mas existem contas vencidas. Eu resolveria essas pendências antes de assumir novos compromissos.";
+    if (kpis.freeCash < 0) return "O saldo atual pode parecer confortável, mas os próximos compromissos pressionam o caixa. O ponto de atenção está nos próximos 30 dias.";
     if (monthTotals.current.result < 0) return `O mês está negativo em ${brl(Math.abs(monthTotals.current.result))}, embora o dinheiro livre projetado ainda esteja em ${brl(kpis.freeCash)}. Vale atacar os gastos que mais cresceram.`;
     return `O cenário de ${entityName} está controlado no momento. O mês está em ${brl(monthTotals.current.result)} e o dinheiro livre estimado para 30 dias é ${brl(kpis.freeCash)}.`;
   }, [entityName, kpis.freeCash, kpis.overduePayables, monthTotals.current.result]);
@@ -226,7 +229,15 @@ function AurelianAdvisor() {
         ? `Pelos compromissos e reservas que já estão no Aurelian, você tem ${brl(kpis.freeCash)} de dinheiro livre estimado para os próximos 30 dias. Eu trataria esse valor como teto, não como meta de gasto.`
         : `Hoje eu não consideraria seguro aumentar gastos. O dinheiro livre projetado está em ${brl(kpis.freeCash)}.`;
     }
-    if (/vence|vencid|atrasad|semana/.test(normalized)) return `Você tem ${brl(kpis.payables)} a pagar no total e ${brl(kpis.overduePayables)} já vencidos. A tela Contas a pagar e receber mostra os itens que precisam ser resolvidos.`;
+    if (/vence|vencid|atrasad|semana/.test(normalized)) {
+      const total = dueSoon.reduce((sum, item) => addMoney(sum, item.amount), 0);
+      if (!dueSoon.length) return kpis.overduePayables > 0
+        ? `Não há pagamentos com vencimento entre hoje e os próximos 7 dias. Separadamente, existem ${brl(kpis.overduePayables)} já vencidos.`
+        : "Não há pagamentos vencendo entre hoje e os próximos 7 dias, e também não há contas vencidas.";
+      const details = dueSoon.slice(0, 5).map((item) => `${item.description} — ${fmtDate(item.dueDate)} — ${brl(item.amount)}`).join("; ");
+      const overdue = kpis.overduePayables > 0 ? ` Separadamente, existem ${brl(kpis.overduePayables)} já vencidos.` : "";
+      return `Nos próximos 7 dias vencem ${dueSoon.length} pagamento(s), somando ${brl(total)}. ${details}.${overdue}`;
+    }
     if (/onde.*gast|gastando mais|maior gasto|categoria/.test(normalized)) return topCategory ? `Seu maior grupo de gastos neste mês é ${topCategory.name}, com ${brl(topCategory.total)}. Isso representa ${monthTotals.current.expense > 0 ? `${((topCategory.total / monthTotals.current.expense) * 100).toFixed(0)}%` : "0%"} das despesas.` : "Ainda não há despesas suficientes neste mês para apontar um grupo dominante.";
     if (/empresa.*apert|pior.*empresa|preju[ií]zo|dando preju[ií]zo/.test(normalized)) return worstEntity ? `${worstEntity.entity.name} é a área mais pressionada no momento, com resultado de ${brl(worstEntity.result)} no mês. Entradas: ${brl(worstEntity.income)}. Saídas: ${brl(worstEntity.expense)}.` : "Ainda não há dados suficientes para comparar as empresas.";
     if (/melhor.*empresa|mais.*resultado|mais.*lucro/.test(normalized)) return bestEntity ? `${bestEntity.entity.name} tem o melhor resultado do mês: ${brl(bestEntity.result)}. Entradas: ${brl(bestEntity.income)}. Saídas: ${brl(bestEntity.expense)}.` : "Ainda não há dados suficientes para comparar as empresas.";
@@ -257,18 +268,20 @@ function AurelianAdvisor() {
       monthResult: monthTotals.current.result,
       previousMonthIncome: monthTotals.previous.income,
       previousMonthExpense: monthTotals.previous.expense,
-      expenseChangePercent: expenseChange ?? 0,
+      ...(expenseChange === null ? {} : { expenseChangePercent: expenseChange }),
     },
     projections: projections.map((item) => ({ days: item.days, balance: item.balance, inflow: item.inflow, outflow: item.outflow })),
     entities: rankedEntities.map((item) => ({ name: item.entity.name, income: item.income, expense: item.expense, result: item.result })),
     categories: categoryTotals.slice(0, 10).map((item) => ({ name: item.name, total: item.total })),
     alerts: priorities.map((item) => ({ title: item.title, body: item.body, tone: item.tone })),
-  }), [categoryTotals, currentMonth, entityId, entityName, expenseChange, kpis, monthTotals, priorities, projections, rankedEntities]);
+    dueSoon,
+  }), [categoryTotals, currentMonth, dueSoon, entityId, entityName, expenseChange, kpis, monthTotals, priorities, projections, rankedEntities]);
 
   const answerQuestion = async (raw: string) => {
     const q = raw.trim();
     if (!q || asking) return;
     const userId = Date.now();
+    const history = messages.slice(-6).map(({ role, text }) => ({ role, text: text.slice(0, 700) }));
     setMessages((current) => [...current, { id: userId, role: "user", text: q }]);
     setQuestion("");
     setAsking(true);
@@ -280,11 +293,8 @@ function AurelianAdvisor() {
       if (token) {
         const response = await fetch("/api/finance/advisor", {
           method: "POST",
-          headers: {
-            "content-type": "application/json",
-            authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ question: q, context: advisorContext }),
+          headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+          body: JSON.stringify({ question: q, context: advisorContext, history }),
         });
         if (response.ok) {
           const payload = await response.json() as { answer?: string };
@@ -295,20 +305,16 @@ function AurelianAdvisor() {
       console.warn("Aurelian IA indisponível; usando resposta local segura.", error);
     }
 
-    setMessages((current) => [
-      ...current,
-      {
-        id: userId + 1,
-        role: "assistant",
-        text: answer ?? "Ainda não tenho dados suficientes para responder isso com segurança. Tente perguntar sobre caixa, vencimentos, gastos, empresas ou projeção.",
-      },
-    ]);
+    setMessages((current) => [...current, { id: userId + 1, role: "assistant", text: answer ?? "Ainda não tenho dados suficientes para responder isso com segurança. Tente perguntar sobre caixa, vencimentos, gastos, empresas ou projeção." }]);
     setAsking(false);
   };
 
-  if (isLoading) {
-    return <div className="panel p-6 text-sm text-muted-foreground">Analisando seus números…</div>;
-  }
+  const scrollToActions = () => {
+    if (typeof document === "undefined") return;
+    requestAnimationFrame(() => document.getElementById("acoes-assistidas")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  };
+
+  if (isLoading) return <div className="panel p-6 text-sm text-muted-foreground">Analisando seus números…</div>;
 
   return (
     <div className="min-w-0">
@@ -317,10 +323,7 @@ function AurelianAdvisor() {
       <section className="panel overflow-hidden border-primary/20 p-5 sm:p-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="max-w-3xl">
-            <div className="flex items-center gap-2 text-primary">
-              <Sparkles className="size-4" />
-              <span className="text-[10px] font-semibold uppercase tracking-[0.18em]">O que eu vejo agora</span>
-            </div>
+            <div className="flex items-center gap-2 text-primary"><Sparkles className="size-4" /><span className="text-[10px] font-semibold uppercase tracking-[0.18em]">O que eu vejo agora</span></div>
             <h2 className="mt-2 text-xl font-semibold sm:text-2xl">{executiveReading}</h2>
             <p className="mt-2 text-xs leading-relaxed text-muted-foreground">A leitura usa apenas dados que já estão registrados no sistema. Quando faltar informação, eu não invento.</p>
           </div>
@@ -338,10 +341,7 @@ function AurelianAdvisor() {
       <div className="mt-4 grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
         <section className="panel p-4 sm:p-5">
           <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-primary">O que merece sua atenção</p>
-              <h2 className="mt-1 text-base font-semibold">Minhas prioridades para você</h2>
-            </div>
+            <div><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-primary">O que merece sua atenção</p><h2 className="mt-1 text-base font-semibold">Minhas prioridades para você</h2></div>
             <Lightbulb className="size-5 text-primary" />
           </div>
           <div className="mt-4 space-y-2">
@@ -349,11 +349,7 @@ function AurelianAdvisor() {
               <div key={`${item.title}-${index}`} className="rounded-xl border border-border bg-surface p-3">
                 <div className="flex items-start gap-3">
                   {item.tone === "critical" ? <AlertTriangle className="mt-0.5 size-4 shrink-0 text-destructive" /> : item.tone === "warning" ? <TrendingDown className="mt-0.5 size-4 shrink-0 text-amber-500" /> : <TrendingUp className="mt-0.5 size-4 shrink-0 text-primary" />}
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium">{item.title}</p>
-                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{item.body}</p>
-                    {item.to ? <Link to={item.to} className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">Resolver agora <ArrowRight className="size-3" /></Link> : null}
-                  </div>
+                  <div className="min-w-0 flex-1"><p className="text-sm font-medium">{item.title}</p><p className="mt-1 text-xs leading-relaxed text-muted-foreground">{item.body}</p>{item.to ? <Link to={item.to} className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">Resolver agora <ArrowRight className="size-3" /></Link> : null}</div>
                 </div>
               </div>
             )) : <p className="rounded-xl border border-dashed border-border p-5 text-center text-xs text-muted-foreground">Não encontrei nenhuma prioridade importante agora.</p>}
@@ -361,122 +357,41 @@ function AurelianAdvisor() {
         </section>
 
         <section className="panel p-4 sm:p-5">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-primary">Como seu dinheiro pode ficar</p>
-          <h2 className="mt-1 text-base font-semibold">Próximos 30 dias</h2>
-          <div className="mt-4 rounded-xl border border-border bg-surface p-4">
-            <p className="text-xs text-muted-foreground">Saldo projetado</p>
-            <p className="num mt-1 text-2xl font-semibold">{brl(p30?.balance ?? kpis.projectedBalance)}</p>
-            <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
-              <div><span className="block text-muted-foreground">Pode entrar</span><strong className="num text-success">{brl(p30?.inflow ?? 0)}</strong></div>
-              <div><span className="block text-muted-foreground">Pode sair</span><strong className="num text-destructive">{brl(p30?.outflow ?? 0)}</strong></div>
-            </div>
-          </div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-primary">Como seu dinheiro pode ficar</p><h2 className="mt-1 text-base font-semibold">Próximos 30 dias</h2>
+          <div className="mt-4 rounded-xl border border-border bg-surface p-4"><p className="text-xs text-muted-foreground">Saldo projetado</p><p className="num mt-1 text-2xl font-semibold">{brl(p30?.balance ?? kpis.projectedBalance)}</p><div className="mt-4 grid grid-cols-2 gap-3 text-xs"><div><span className="block text-muted-foreground">Pode entrar</span><strong className="num text-success">{brl(p30?.inflow ?? 0)}</strong></div><div><span className="block text-muted-foreground">Pode sair</span><strong className="num text-destructive">{brl(p30?.outflow ?? 0)}</strong></div></div></div>
           <Button variant="outline" className="mt-3 w-full" asChild><Link to="/projecao">Ver projeção completa</Link></Button>
         </section>
       </div>
 
-      <DecisionSimulator
-        entityName={entityName}
-        balance={kpis.balance}
-        freeCash={kpis.freeCash}
-        projections={projections}
-        onAskAurelian={(prompt) => void answerQuestion(prompt)}
-      />
-
+      <DecisionSimulator entityName={entityName} balance={kpis.balance} freeCash={kpis.freeCash} projections={projections} onAskAurelian={(prompt) => void answerQuestion(prompt)} />
       <PaymentPriorityPanel data={data} entityId={entityId} />
-
-      <CashPlanner
-        data={data}
-        entityId={entityId}
-        entityName={entityName}
-        balance={kpis.balance}
-        freeCash={kpis.freeCash}
-        onAskAurelian={(prompt) => void answerQuestion(prompt)}
-      />
-
-      <ScenarioComparison
-        entityName={entityName}
-        freeCash={kpis.freeCash}
-        projections={projections}
-        onAskAurelian={(prompt) => void answerQuestion(prompt)}
-      />
+      <CashPlanner data={data} entityId={entityId} entityName={entityName} balance={kpis.balance} freeCash={kpis.freeCash} onAskAurelian={(prompt) => void answerQuestion(prompt)} />
+      <ScenarioComparison entityName={entityName} freeCash={kpis.freeCash} projections={projections} onAskAurelian={(prompt) => void answerQuestion(prompt)} onUsePlan={scrollToActions} />
+      <AssistedPaymentActions data={data} entityId={entityId} />
 
       <section className="panel mt-4 p-4 sm:p-5">
         <div className="flex items-start gap-3">
           <Bot className="mt-0.5 size-5 shrink-0 text-primary" />
           <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-primary">Pergunte ao Aurelian</p>
-            <h2 className="mt-1 text-base font-semibold">Pergunte aos seus números do seu jeito</h2>
-            <p className="mt-1 text-xs text-muted-foreground">Perguntas livres usam o Aurelian IA. Se a IA estiver indisponível, perguntas comuns continuam sendo respondidas pelas regras locais do sistema.</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {QUICK_QUESTIONS.map((item) => <Button key={item} variant="outline" size="sm" className="h-auto whitespace-normal text-left text-xs" disabled={asking} onClick={() => void answerQuestion(item)}>{item}</Button>)}
-            </div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-primary">Pergunte ao Aurelian</p><h2 className="mt-1 text-base font-semibold">Pergunte aos seus números do seu jeito</h2>
+            <p className="mt-1 text-xs text-muted-foreground">Perguntas livres usam o Aurelian IA. Ele mantém um contexto curto da conversa para entender continuações sem expor IDs internos.</p>
+            <div className="mt-3 flex flex-wrap gap-2">{QUICK_QUESTIONS.map((item) => <Button key={item} variant="outline" size="sm" className="h-auto whitespace-normal text-left text-xs" disabled={asking} onClick={() => void answerQuestion(item)}>{item}</Button>)}</div>
             <div className="mt-4 max-h-80 space-y-2 overflow-y-auto rounded-xl border border-border bg-surface p-3">
-              {messages.map((message) => (
-                <div key={message.id} className={`max-w-[92%] rounded-xl px-3 py-2 text-xs leading-relaxed ${message.role === "assistant" ? "bg-primary/8 text-foreground" : "ml-auto bg-muted text-foreground"}`}>
-                  {message.text}
-                </div>
-              ))}
+              {messages.map((message) => <div key={message.id} className={`max-w-[92%] rounded-xl px-3 py-2 text-xs leading-relaxed ${message.role === "assistant" ? "bg-primary/8 text-foreground" : "ml-auto bg-muted text-foreground"}`}>{message.text}</div>)}
               {asking ? <div className="flex max-w-[92%] items-center gap-2 rounded-xl bg-primary/8 px-3 py-2 text-xs text-muted-foreground"><Loader2 className="size-3 animate-spin" /> Analisando seus números…</div> : null}
             </div>
-            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-              <Textarea value={question} onChange={(event) => setQuestion(event.target.value)} rows={2} maxLength={500} placeholder="Ex.: posso gastar R$ 5.000 esta semana sem apertar o caixa?" className="resize-none" />
-              <Button className="gap-2 sm:self-stretch" onClick={() => void answerQuestion(question)} disabled={!question.trim() || asking}>{asking ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />} {asking ? "Analisando" : "Perguntar"}</Button>
-            </div>
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row"><Textarea value={question} onChange={(event) => setQuestion(event.target.value)} rows={2} maxLength={500} placeholder="Ex.: posso gastar R$ 5.000 esta semana sem apertar o caixa?" className="resize-none" /><Button className="gap-2 sm:self-stretch" onClick={() => void answerQuestion(question)} disabled={!question.trim() || asking}>{asking ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />} {asking ? "Analisando" : "Perguntar"}</Button></div>
           </div>
         </div>
       </section>
 
-      {entityId === ALL && rankedEntities.length > 0 ? (
-        <section className="panel mt-4 p-4 sm:p-5">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-primary">Como cada área está indo</p>
-          <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-            {rankedEntities.map((item) => (
-              <div key={item.entity.id} className="rounded-xl border border-border bg-surface p-3">
-                <p className="text-sm font-medium">{item.entity.name}</p>
-                <p className={`num mt-1 text-lg font-semibold ${item.result < 0 ? "text-destructive" : "text-success"}`}>{brl(item.result)}</p>
-                <p className="mt-1 text-[11px] text-muted-foreground">Entrou {brl(item.income)} · saiu {brl(item.expense)}</p>
-              </div>
-            ))}
-          </div>
-        </section>
-      ) : null}
+      {entityId === ALL && rankedEntities.length > 0 ? <section className="panel mt-4 p-4 sm:p-5"><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-primary">Como cada área está indo</p><div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">{rankedEntities.map((item) => <div key={item.entity.id} className="rounded-xl border border-border bg-surface p-3"><p className="text-sm font-medium">{item.entity.name}</p><p className={`num mt-1 text-lg font-semibold ${item.result < 0 ? "text-destructive" : "text-success"}`}>{brl(item.result)}</p><p className="mt-1 text-[11px] text-muted-foreground">Entrou {brl(item.income)} · saiu {brl(item.expense)}</p></div>)}</div></section> : null}
 
-      {categoryTotals.length > 0 ? (
-        <section className="panel mt-4 p-4 sm:p-5">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-primary">Onde seu dinheiro mais está indo</p>
-          <div className="mt-3 space-y-2">
-            {categoryTotals.slice(0, 5).map((item) => {
-              const share = monthTotals.current.expense > 0 ? item.total / monthTotals.current.expense : 0;
-              return (
-                <div key={item.categoryId} className="rounded-xl border border-border bg-surface p-3">
-                  <div className="flex items-center justify-between gap-3 text-xs">
-                    <span className="font-medium">{item.name}</span>
-                    <span className="num">{brl(item.total)} · {(share * 100).toFixed(0)}%</span>
-                  </div>
-                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary" style={{ width: `${Math.min(100, share * 100)}%` }} /></div>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      ) : null}
+      {categoryTotals.length > 0 ? <section className="panel mt-4 p-4 sm:p-5"><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-primary">Onde seu dinheiro mais está indo</p><div className="mt-3 space-y-2">{categoryTotals.slice(0, 5).map((item) => { const share = monthTotals.current.expense > 0 ? item.total / monthTotals.current.expense : 0; return <div key={item.categoryId} className="rounded-xl border border-border bg-surface p-3"><div className="flex items-center justify-between gap-3 text-xs"><span className="font-medium">{item.name}</span><span className="num">{brl(item.total)} · {(share * 100).toFixed(0)}%</span></div><div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary" style={{ width: `${Math.min(100, share * 100)}%` }} /></div></div>; })}</div></section> : null}
     </div>
   );
 }
 
-function MetricCard({ icon: Icon, label, value, detail, danger = false }: {
-  icon: typeof CircleDollarSign;
-  label: string;
-  value: string;
-  detail: string;
-  danger?: boolean;
-}) {
-  return (
-    <section className={`panel p-4 ${danger ? "border-destructive/25" : ""}`}>
-      <div className="flex items-center gap-2 text-muted-foreground"><Icon className={`size-4 ${danger ? "text-destructive" : "text-primary"}`} /><span className="text-[10px] font-semibold uppercase tracking-[0.15em]">{label}</span></div>
-      <p className={`num mt-2 text-xl font-semibold ${danger ? "text-destructive" : ""}`}>{value}</p>
-      <p className="mt-1 text-[11px] text-muted-foreground">{detail}</p>
-    </section>
-  );
+function MetricCard({ icon: Icon, label, value, detail, danger = false }: { icon: typeof CircleDollarSign; label: string; value: string; detail: string; danger?: boolean; }) {
+  return <section className={`panel p-4 ${danger ? "border-destructive/25" : ""}`}><div className="flex items-center gap-2 text-muted-foreground"><Icon className={`size-4 ${danger ? "text-destructive" : "text-primary"}`} /><span className="text-[10px] font-semibold uppercase tracking-[0.15em]">{label}</span></div><p className={`num mt-2 text-xl font-semibold ${danger ? "text-destructive" : ""}`}>{value}</p><p className="mt-1 text-[11px] text-muted-foreground">{detail}</p></section>;
 }
