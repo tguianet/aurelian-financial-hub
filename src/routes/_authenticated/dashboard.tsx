@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Wallet, TrendingUp, TrendingDown, ArrowDownToLine, ArrowUpFromLine, LineChart as LineChartIcon, ShieldCheck } from "lucide-react";
+import { AlertTriangle, ArrowDownToLine, ArrowRight, ArrowUpFromLine, CheckCircle2, Clock3, LineChart as LineChartIcon, ShieldCheck, TrendingDown, TrendingUp, Wallet } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useEntityScope } from "@/components/finance/EntityContext";
 import { KpiCard } from "@/components/finance/KpiCard";
@@ -54,6 +54,52 @@ function Dashboard() {
 
   const commitments30 = k.commitments;
   const strictFreeCash = k.freeCash;
+  const openTransactions = data.transactions.filter((t) => t.kind !== "transfer" && !t.deleted_at && isOpen(t) && scope.matchesEntity(t.entity_id));
+  const overduePayments = openTransactions.filter((t) => t.kind === "expense" && toDate(t.due_date ?? t.competence_date) < ref);
+  const overdueReceipts = openTransactions.filter((t) => t.kind === "income" && toDate(t.due_date ?? t.competence_date) < ref);
+  const dueToday = openTransactions.filter((t) => toDate(t.due_date ?? t.competence_date).toDateString() === ref.toDateString());
+
+  const priorities = [
+    overduePayments.length > 0 ? {
+      title: `${overduePayments.length} pagamento${overduePayments.length > 1 ? "s" : ""} atrasado${overduePayments.length > 1 ? "s" : ""}`,
+      body: `${brl(overduePayments.reduce((sum, item) => addMoney(sum, Number(item.amount)), 0))} já venceu e merece sua atenção primeiro.`,
+      to: "/pendencias" as const,
+      action: "Ver pagamentos",
+      icon: AlertTriangle,
+      tone: "critical" as const,
+    } : null,
+    overdueReceipts.length > 0 ? {
+      title: `${overdueReceipts.length} recebimento${overdueReceipts.length > 1 ? "s" : ""} atrasado${overdueReceipts.length > 1 ? "s" : ""}`,
+      body: `${brl(overdueReceipts.reduce((sum, item) => addMoney(sum, Number(item.amount)), 0))} já deveria ter entrado.`,
+      to: "/pendencias" as const,
+      action: "Ver recebimentos",
+      icon: ArrowDownToLine,
+      tone: "warning" as const,
+    } : null,
+    dueToday.length > 0 ? {
+      title: `${dueToday.length} coisa${dueToday.length > 1 ? "s" : ""} vence${dueToday.length > 1 ? "m" : ""} hoje`,
+      body: "Vale conferir agora para não deixar nada passar.",
+      to: "/pendencias" as const,
+      action: "Ver o que vence hoje",
+      icon: Clock3,
+      tone: "info" as const,
+    } : null,
+    strictFreeCash < 0 ? {
+      title: "Os próximos 30 dias estão apertados",
+      body: `Depois dos compromissos conhecidos, a previsão fica em ${brl(strictFreeCash)}.`,
+      to: "/projecao" as const,
+      action: "Ver próximos 30 dias",
+      icon: TrendingDown,
+      tone: "critical" as const,
+    } : null,
+  ].filter(Boolean).slice(0, 3) as Array<{
+    title: string;
+    body: string;
+    to: "/pendencias" | "/projecao";
+    action: string;
+    icon: typeof AlertTriangle;
+    tone: "critical" | "warning" | "info";
+  }>;
 
   return (
     <div className="min-w-0">
@@ -64,6 +110,50 @@ function Dashboard() {
       />
 
       {isLoading ? <p className="mb-4 text-sm text-muted-foreground">Organizando seus dados…</p> : null}
+
+      <section className="panel mb-4 p-4 sm:p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <p className="text-[10px] font-medium uppercase tracking-[0.16em] text-primary">Resumo do dia</p>
+            <h2 className="mt-1 text-lg font-semibold">
+              {priorities.length > 0 ? `Hoje eu cuidaria de ${priorities.length} ${priorities.length === 1 ? "coisa" : "coisas"}.` : "Hoje está tudo em ordem."}
+            </h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {priorities.length > 0 ? "Coloquei primeiro o que pode afetar seu caixa ou virar problema." : "Não encontrei pagamentos ou recebimentos urgentes agora."}
+            </p>
+          </div>
+          <Link to="/consultor" className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-primary/25 bg-primary/5 px-3 text-xs font-medium text-primary hover:bg-primary/10">
+            Perguntar ao Aurelian IA <ArrowRight className="size-3.5" />
+          </Link>
+        </div>
+
+        {priorities.length > 0 ? (
+          <div className="mt-4 grid gap-3 lg:grid-cols-3">
+            {priorities.map((item) => {
+              const Icon = item.icon;
+              return (
+                <div key={item.title} className={`rounded-xl border p-4 ${item.tone === "critical" ? "border-destructive/30 bg-destructive/5" : item.tone === "warning" ? "border-amber-500/30 bg-amber-500/5" : "border-primary/20 bg-primary/5"}`}>
+                  <div className="flex items-start gap-3">
+                    <Icon className={`mt-0.5 size-4 shrink-0 ${item.tone === "critical" ? "text-destructive" : item.tone === "warning" ? "text-amber-500" : "text-primary"}`} />
+                    <div className="min-w-0">
+                      <h3 className="text-sm font-medium">{item.title}</h3>
+                      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{item.body}</p>
+                      <Link to={item.to} className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
+                        {item.action} <ArrowRight className="size-3" />
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="mt-4 flex items-center gap-3 rounded-xl border border-primary/20 bg-primary/5 p-4">
+            <CheckCircle2 className="size-5 text-primary" />
+            <div><p className="text-sm font-medium">Nada urgente agora</p><p className="text-xs text-muted-foreground">Você pode seguir acompanhando normalmente ou registrar uma nova movimentação.</p></div>
+          </div>
+        )}
+      </section>
 
       <div className="panel relative overflow-hidden p-4 sm:p-5 md:p-8">
         <div className="pointer-events-none absolute -right-24 -top-24 size-72 rounded-full bg-primary/10 blur-3xl" />
