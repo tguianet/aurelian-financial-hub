@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -42,6 +42,13 @@ export function DisambiguationDialog({
   const [entityId, setEntityId] = useState(suggestedEntityId ?? "");
   const [categoryId, setCategoryId] = useState(suggestedCategoryId ?? "");
   const [remember, setRemember] = useState(true);
+
+  useEffect(() => {
+    if (!open) return;
+    setEntityId(suggestedEntityId ?? "");
+    setCategoryId(suggestedCategoryId ?? "");
+    setRemember(true);
+  }, [open, suggestedCategoryId, suggestedEntityId, hint, amount]);
 
   const activeEntities = useMemo(() => entities.filter((item) => item.active), [entities]);
   const activeCategories = useMemo(() => categories.filter((item) => item.active !== false), [categories]);
