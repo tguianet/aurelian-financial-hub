@@ -1,10 +1,11 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { AlertTriangle, ArrowLeft, Building2, ShieldCheck, Siren, TrendingUp } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Building2, CopyCheck, ShieldCheck, Siren, TrendingUp } from "lucide-react";
 import { useEntityScope } from "@/components/finance/EntityContext";
 import { PageHeader } from "@/components/finance/PageHeader";
 import { AdvisorAiPanel } from "@/components/finance/AdvisorAiPanel";
-import { brl, today } from "@/lib/finance";
+import { brl, fmtDate, today } from "@/lib/finance";
 import { advisorAlerts, advisorHealth, categoryMovements, entityRiskRows } from "@/lib/finance-advisor";
+import { detectTransactionAnomalies } from "@/lib/finance-anomalies";
 
 export const Route = createFileRoute("/_authenticated/consultor-riscos")({
   head: () => ({ meta: [{ title: "O que merece atenção — Aurelian Finance" }] }),
@@ -16,6 +17,7 @@ function ConsultorRiscos() {
   const ref = today();
   const health = advisorHealth(data, entityId, ref);
   const alerts = advisorAlerts(data, entityId, ref);
+  const anomalies = detectTransactionAnomalies(data, entityId);
   const movements = categoryMovements(data, entityId, ref);
   const entityRisks = entityRiskRows(data, ref);
 
@@ -68,6 +70,53 @@ function ConsultorRiscos() {
 
         <AdvisorAiPanel data={data} entityId={entityId} entityName={entityName} />
       </div>
+
+      <section className="panel mt-4 p-4 sm:p-5">
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-2">
+            <CopyCheck className="mt-0.5 size-4 shrink-0 text-primary" />
+            <div>
+              <h2 className="text-sm font-semibold">Coisas que parecem fora do normal</h2>
+              <p className="mt-1 text-xs text-muted-foreground">O Aurelian só mostra sinais conservadores. Nada é apagado ou alterado automaticamente.</p>
+            </div>
+          </div>
+          <Link to="/lancamentos" className="text-xs text-primary hover:underline">Abrir movimentações</Link>
+        </div>
+
+        {anomalies.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border px-4 py-8 text-center">
+            <ShieldCheck className="mx-auto size-6 text-primary" />
+            <p className="mt-2 text-sm font-medium">Nada suspeito apareceu agora</p>
+            <p className="mt-1 text-xs text-muted-foreground">Não encontrei duplicidades prováveis nem gastos muito fora do seu padrão recente.</p>
+          </div>
+        ) : (
+          <div className="grid gap-3 lg:grid-cols-2">
+            {anomalies.slice(0, 10).map((anomaly) => (
+              <article key={anomaly.id} className={`rounded-xl border p-4 ${anomaly.severity === "critical" ? "border-destructive/30 bg-destructive/5" : "border-amber-500/30 bg-amber-500/5"}`}>
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className={`mt-0.5 size-4 shrink-0 ${anomaly.severity === "critical" ? "text-destructive" : "text-amber-500"}`} />
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-sm font-medium">{anomaly.title}</h3>
+                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{anomaly.body}</p>
+                    <div className="mt-3 rounded-lg border border-border bg-background/55 px-3 py-2">
+                      <p className="truncate text-xs font-medium">{anomaly.transaction.description}</p>
+                      <p className="mt-0.5 text-[10px] text-muted-foreground">{fmtDate(anomaly.transaction.competence_date)} · {brl(Number(anomaly.transaction.amount))}</p>
+                    </div>
+                    {anomaly.relatedTransaction ? (
+                      <div className="mt-2 rounded-lg border border-border bg-background/40 px-3 py-2">
+                        <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Possível repetição</p>
+                        <p className="mt-1 truncate text-xs font-medium">{anomaly.relatedTransaction.description}</p>
+                        <p className="mt-0.5 text-[10px] text-muted-foreground">{fmtDate(anomaly.relatedTransaction.competence_date)} · {brl(Number(anomaly.relatedTransaction.amount))}</p>
+                      </div>
+                    ) : null}
+                    <Link to="/lancamentos" className="mt-3 inline-flex items-center text-xs font-medium text-primary hover:underline">Conferir movimentações</Link>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
 
       <div className="mt-4 grid gap-4 xl:grid-cols-2">
         <section className="panel p-4 sm:p-5">
