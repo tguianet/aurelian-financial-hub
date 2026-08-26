@@ -28,7 +28,6 @@ export function prioritizedPayables(data: FinanceDataset, entityId: string) {
   return data.transactions
     .filter((tx) =>
       tx.kind === "expense"
-      && tx.kind !== "transfer"
       && !tx.deleted_at
       && isOpen(tx)
       && (entityId === "all" || tx.entity_id === entityId),
