@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { AlertTriangle, ArrowRight, CheckCircle2, FileWarning, FolderOpen, Tags, WalletCards } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -46,15 +46,18 @@ function ReviewInbox() {
     [data.transactions, entityId],
   );
 
-  const uncategorized = useMemo(
-    () => scopedTransactions.filter((tx) => !tx.category_id).slice(0, 8),
+  const uncategorizedAll = useMemo(
+    () => scopedTransactions.filter((tx) => !tx.category_id),
     [scopedTransactions],
   );
 
-  const withoutAccount = useMemo(
-    () => scopedTransactions.filter((tx) => !tx.account_id).slice(0, 8),
+  const withoutAccountAll = useMemo(
+    () => scopedTransactions.filter((tx) => !tx.account_id),
     [scopedTransactions],
   );
+
+  const uncategorized = uncategorizedAll.slice(0, 8);
+  const withoutAccount = withoutAccountAll.slice(0, 8);
 
   const overdueWithoutCategory = useMemo(
     () => scopedTransactions.filter((tx) => !tx.category_id && isOpen(tx) && tx.status === "overdue").slice(0, 5),
@@ -62,7 +65,14 @@ function ReviewInbox() {
   );
 
   const anomalies = useMemo(() => detectTransactionAnomalies(data, entityId), [data, entityId]);
-  const total = documents.length + uncategorized.length + withoutAccount.length + anomalies.length;
+  const reviewTransactionIds = useMemo(() => {
+    const ids = new Set<string>();
+    uncategorizedAll.forEach((tx) => ids.add(tx.id));
+    withoutAccountAll.forEach((tx) => ids.add(tx.id));
+    anomalies.forEach((item) => ids.add(item.transaction.id));
+    return ids;
+  }, [uncategorizedAll, withoutAccountAll, anomalies]);
+  const total = documents.length + reviewTransactionIds.size;
 
   return (
     <div className="min-w-0">
@@ -136,7 +146,7 @@ function ReviewInbox() {
         <ReviewCard
           icon={Tags}
           title="Sem categoria"
-          count={uncategorized.length}
+          count={uncategorizedAll.length}
           description="Movimentações que existem, mas ainda não estão organizadas para relatórios e comparações."
           to="/lancamentos"
           action="Organizar movimentações"
@@ -155,7 +165,7 @@ function ReviewInbox() {
         <ReviewCard
           icon={WalletCards}
           title="Sem conta definida"
-          count={withoutAccount.length}
+          count={withoutAccountAll.length}
           description="Movimentações em que ainda não está claro de qual conta o dinheiro entrou ou saiu."
           to="/lancamentos"
           action="Definir contas"
@@ -203,7 +213,7 @@ function ReviewCard({ icon: Icon, title, count, description, to, action, childre
   description: string;
   to: "/documentos" | "/lancamentos";
   action: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <section className="panel flex min-h-64 flex-col p-4 sm:p-5">
