@@ -7,12 +7,14 @@ import {
   CircleDollarSign,
   Gauge,
   Lightbulb,
+  Loader2,
   Send,
   Sparkles,
   TrendingDown,
   TrendingUp,
   WalletCards,
 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 import { useEntityScope } from "@/components/finance/EntityContext";
 import { PageHeader } from "@/components/finance/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -85,6 +87,7 @@ function AurelianAdvisor() {
   const summaries = entitySummaries(data, ref);
   const anomalies = useMemo(() => detectTransactionAnomalies(data, entityId), [data, entityId]);
   const [question, setQuestion] = useState("");
+  const [asking, setAsking] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: 1,
@@ -211,51 +214,91 @@ function AurelianAdvisor() {
     return `O cenário de ${entityName} está controlado no momento. O mês está em ${brl(monthTotals.current.result)} e o dinheiro livre estimado para 30 dias é ${brl(kpis.freeCash)}.`;
   }, [entityName, kpis.freeCash, kpis.overduePayables, monthTotals.current.result]);
 
-  const answerQuestion = (raw: string) => {
-    const q = raw.trim();
-    if (!q) return;
+  const localAnswer = (q: string) => {
     const normalized = q.toLocaleLowerCase("pt-BR");
-    let answer = "Ainda não tenho dados suficientes para responder isso com segurança. Tente perguntar sobre caixa, vencimentos, gastos, empresas ou projeção.";
-
     if (/posso gastar|quanto.*usar|dinheiro livre|quanto.*disponivel|quanto.*disponível/.test(normalized)) {
-      answer = kpis.freeCash >= 0
+      return kpis.freeCash >= 0
         ? `Pelos compromissos e reservas que já estão no Aurelian, você tem ${brl(kpis.freeCash)} de dinheiro livre estimado para os próximos 30 dias. Eu trataria esse valor como teto, não como meta de gasto.`
         : `Hoje eu não consideraria seguro aumentar gastos. O dinheiro livre projetado está em ${brl(kpis.freeCash)}.`;
-    } else if (/vence|vencid|atrasad|semana/.test(normalized)) {
-      answer = `Você tem ${brl(kpis.payables)} a pagar no total e ${brl(kpis.overduePayables)} já vencidos. A tela Contas a pagar e receber mostra exatamente quais itens precisam ser resolvidos.`;
-    } else if (/onde.*gast|gastando mais|maior gasto|categoria/.test(normalized)) {
-      answer = topCategory
-        ? `Seu maior grupo de gastos neste mês é ${topCategory.name}, com ${brl(topCategory.total)}. Isso representa ${monthTotals.current.expense > 0 ? `${((topCategory.total / monthTotals.current.expense) * 100).toFixed(0)}%` : "0%"} das despesas.`
-        : "Ainda não há despesas suficientes neste mês para apontar um grupo dominante.";
-    } else if (/empresa.*apert|pior.*empresa|preju[ií]zo|dando preju[ií]zo/.test(normalized)) {
-      answer = worstEntity
-        ? `${worstEntity.entity.name} é a área mais pressionada no momento, com resultado de ${brl(worstEntity.result)} no mês. Entradas: ${brl(worstEntity.income)}. Saídas: ${brl(worstEntity.expense)}.`
-        : "Ainda não há dados suficientes para comparar as empresas.";
-    } else if (/melhor.*empresa|mais.*resultado|mais.*lucro/.test(normalized)) {
-      answer = bestEntity
-        ? `${bestEntity.entity.name} tem o melhor resultado do mês: ${brl(bestEntity.result)}. Entradas: ${brl(bestEntity.income)}. Saídas: ${brl(bestEntity.expense)}.`
-        : "Ainda não há dados suficientes para comparar as empresas.";
-    } else if (/30 dias|proje|futuro|como vou estar/.test(normalized)) {
-      answer = p30
-        ? `Daqui a 30 dias, a projeção atual de saldo é ${brl(p30.balance)}, considerando ${brl(p30.inflow)} de entradas e ${brl(p30.outflow)} de saídas previstas.`
-        : `O dinheiro livre estimado para 30 dias é ${brl(kpis.freeCash)}.`;
-    } else if (/resolver primeiro|prioridade|o que fazer|o que devo/.test(normalized)) {
+    }
+    if (/vence|vencid|atrasad|semana/.test(normalized)) return `Você tem ${brl(kpis.payables)} a pagar no total e ${brl(kpis.overduePayables)} já vencidos. A tela Contas a pagar e receber mostra os itens que precisam ser resolvidos.`;
+    if (/onde.*gast|gastando mais|maior gasto|categoria/.test(normalized)) return topCategory ? `Seu maior grupo de gastos neste mês é ${topCategory.name}, com ${brl(topCategory.total)}. Isso representa ${monthTotals.current.expense > 0 ? `${((topCategory.total / monthTotals.current.expense) * 100).toFixed(0)}%` : "0%"} das despesas.` : "Ainda não há despesas suficientes neste mês para apontar um grupo dominante.";
+    if (/empresa.*apert|pior.*empresa|preju[ií]zo|dando preju[ií]zo/.test(normalized)) return worstEntity ? `${worstEntity.entity.name} é a área mais pressionada no momento, com resultado de ${brl(worstEntity.result)} no mês. Entradas: ${brl(worstEntity.income)}. Saídas: ${brl(worstEntity.expense)}.` : "Ainda não há dados suficientes para comparar as empresas.";
+    if (/melhor.*empresa|mais.*resultado|mais.*lucro/.test(normalized)) return bestEntity ? `${bestEntity.entity.name} tem o melhor resultado do mês: ${brl(bestEntity.result)}. Entradas: ${brl(bestEntity.income)}. Saídas: ${brl(bestEntity.expense)}.` : "Ainda não há dados suficientes para comparar as empresas.";
+    if (/30 dias|proje|futuro|como vou estar/.test(normalized)) return p30 ? `Daqui a 30 dias, a projeção atual de saldo é ${brl(p30.balance)}, considerando ${brl(p30.inflow)} de entradas e ${brl(p30.outflow)} de saídas previstas.` : `O dinheiro livre estimado para 30 dias é ${brl(kpis.freeCash)}.`;
+    if (/resolver primeiro|prioridade|o que fazer|o que devo/.test(normalized)) {
       const first = priorities[0];
-      answer = first ? `Eu começaria por isto: ${first.title}. ${first.body}` : "Não encontrei nenhuma prioridade crítica agora. O cenário está estável com os dados atuais.";
-    } else if (/saldo|quanto.*tenho|caixa atual/.test(normalized)) {
-      answer = `Seu saldo realizado em ${entityName} é ${brl(kpis.balance)}. Depois dos compromissos conhecidos, o dinheiro livre projetado fica em ${brl(kpis.freeCash)}.`;
-    } else if (/receber/.test(normalized)) {
-      answer = `Você tem ${brl(kpis.receivables)} a receber, sendo ${brl(kpis.overdueReceivables)} vencidos.`;
-    } else if (/resultado|lucro|sobrou|margem/.test(normalized)) {
-      answer = `Neste mês entraram ${brl(monthTotals.current.income)} e saíram ${brl(monthTotals.current.expense)}. O resultado até agora é ${brl(monthTotals.current.result)}.`;
+      return first ? `Eu começaria por isto: ${first.title}. ${first.body}` : "Não encontrei nenhuma prioridade crítica agora. O cenário está estável com os dados atuais.";
+    }
+    if (/saldo|quanto.*tenho|caixa atual/.test(normalized)) return `Seu saldo realizado em ${entityName} é ${brl(kpis.balance)}. Depois dos compromissos conhecidos, o dinheiro livre projetado fica em ${brl(kpis.freeCash)}.`;
+    if (/receber/.test(normalized)) return `Você tem ${brl(kpis.receivables)} a receber, sendo ${brl(kpis.overdueReceivables)} vencidos.`;
+    if (/resultado|lucro|sobrou|margem/.test(normalized)) return `Neste mês entraram ${brl(monthTotals.current.income)} e saíram ${brl(monthTotals.current.expense)}. O resultado até agora é ${brl(monthTotals.current.result)}.`;
+    return null;
+  };
+
+  const advisorContext = useMemo(() => ({
+    scope: { entityId, entityName },
+    period: currentMonth,
+    kpis: {
+      balance: kpis.balance,
+      freeCash30d: kpis.freeCash,
+      projectedBalance: kpis.projectedBalance,
+      payables: kpis.payables,
+      receivables: kpis.receivables,
+      overduePayables: kpis.overduePayables,
+      overdueReceivables: kpis.overdueReceivables,
+      monthIncome: monthTotals.current.income,
+      monthExpense: monthTotals.current.expense,
+      monthResult: monthTotals.current.result,
+      previousMonthIncome: monthTotals.previous.income,
+      previousMonthExpense: monthTotals.previous.expense,
+      expenseChangePercent: expenseChange ?? 0,
+    },
+    projections: projections.map((item) => ({ days: item.days, balance: item.balance, inflow: item.inflow, outflow: item.outflow })),
+    entities: rankedEntities.map((item) => ({ name: item.entity.name, income: item.income, expense: item.expense, result: item.result })),
+    categories: categoryTotals.slice(0, 10).map((item) => ({ name: item.name, total: item.total })),
+    alerts: priorities.map((item) => ({ title: item.title, body: item.body, tone: item.tone })),
+  }), [categoryTotals, currentMonth, entityId, entityName, expenseChange, kpis, monthTotals, priorities, projections, rankedEntities]);
+
+  const answerQuestion = async (raw: string) => {
+    const q = raw.trim();
+    if (!q || asking) return;
+    const userId = Date.now();
+    setMessages((current) => [...current, { id: userId, role: "user", text: q }]);
+    setQuestion("");
+    setAsking(true);
+
+    let answer = localAnswer(q);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (token) {
+        const response = await fetch("/api/finance/advisor", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ question: q, context: advisorContext }),
+        });
+        if (response.ok) {
+          const payload = await response.json() as { answer?: string };
+          if (payload.answer?.trim()) answer = payload.answer.trim();
+        }
+      }
+    } catch (error) {
+      console.warn("Aurelian IA indisponível; usando resposta local segura.", error);
     }
 
     setMessages((current) => [
       ...current,
-      { id: Date.now(), role: "user", text: q },
-      { id: Date.now() + 1, role: "assistant", text: answer },
+      {
+        id: userId + 1,
+        role: "assistant",
+        text: answer ?? "Ainda não tenho dados suficientes para responder isso com segurança. Tente perguntar sobre caixa, vencimentos, gastos, empresas ou projeção.",
+      },
     ]);
-    setQuestion("");
+    setAsking(false);
   };
 
   if (isLoading) {
@@ -333,8 +376,9 @@ function AurelianAdvisor() {
           <div className="min-w-0 flex-1">
             <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-primary">Pergunte ao Aurelian</p>
             <h2 className="mt-1 text-base font-semibold">Pergunte aos seus números do seu jeito</h2>
+            <p className="mt-1 text-xs text-muted-foreground">Perguntas livres usam o Aurelian IA. Se a IA estiver indisponível, perguntas comuns continuam sendo respondidas pelas regras locais do sistema.</p>
             <div className="mt-3 flex flex-wrap gap-2">
-              {QUICK_QUESTIONS.map((item) => <Button key={item} variant="outline" size="sm" className="h-auto whitespace-normal text-left text-xs" onClick={() => answerQuestion(item)}>{item}</Button>)}
+              {QUICK_QUESTIONS.map((item) => <Button key={item} variant="outline" size="sm" className="h-auto whitespace-normal text-left text-xs" disabled={asking} onClick={() => void answerQuestion(item)}>{item}</Button>)}
             </div>
             <div className="mt-4 max-h-80 space-y-2 overflow-y-auto rounded-xl border border-border bg-surface p-3">
               {messages.map((message) => (
@@ -342,10 +386,11 @@ function AurelianAdvisor() {
                   {message.text}
                 </div>
               ))}
+              {asking ? <div className="flex max-w-[92%] items-center gap-2 rounded-xl bg-primary/8 px-3 py-2 text-xs text-muted-foreground"><Loader2 className="size-3 animate-spin" /> Analisando seus números…</div> : null}
             </div>
             <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-              <Textarea value={question} onChange={(event) => setQuestion(event.target.value)} rows={2} placeholder="Ex.: posso gastar R$ 5.000 esta semana sem apertar o caixa?" className="resize-none" />
-              <Button className="gap-2 sm:self-stretch" onClick={() => answerQuestion(question)} disabled={!question.trim()}><Send className="size-4" /> Perguntar</Button>
+              <Textarea value={question} onChange={(event) => setQuestion(event.target.value)} rows={2} maxLength={500} placeholder="Ex.: posso gastar R$ 5.000 esta semana sem apertar o caixa?" className="resize-none" />
+              <Button className="gap-2 sm:self-stretch" onClick={() => void answerQuestion(question)} disabled={!question.trim() || asking}>{asking ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />} {asking ? "Analisando" : "Perguntar"}</Button>
             </div>
           </div>
         </div>
