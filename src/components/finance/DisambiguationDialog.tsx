@@ -41,7 +41,7 @@ export function DisambiguationDialog({
 }: Props) {
   const [entityId, setEntityId] = useState(suggestedEntityId ?? "");
   const [categoryId, setCategoryId] = useState(suggestedCategoryId ?? "");
-  const [remember, setRemember] = useState(false);
+  const [remember, setRemember] = useState(true);
 
   const activeEntities = useMemo(() => entities.filter((item) => item.active), [entities]);
   const activeCategories = useMemo(() => categories.filter((item) => item.active !== false), [categories]);
@@ -51,8 +51,8 @@ export function DisambiguationDialog({
     && (!needsCategory || Boolean(categoryId));
 
   const summaryCategory = needsCategory
-    ? (selectedCategory?.name ?? "Categoria a definir")
-    : (categoryName || selectedCategory?.name || "Categoria a definir");
+    ? (selectedCategory?.name ?? "Ainda vou organizar")
+    : (categoryName || selectedCategory?.name || "Ainda vou organizar");
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!next) onCancel(); }}>
@@ -60,23 +60,23 @@ export function DisambiguationDialog({
         <DialogHeader>
           <DialogTitle>{disambiguationTitle(needsEntity, needsCategory)}</DialogTitle>
           <DialogDescription className="text-xs">
-            A IA não escolheu sozinha. Isso só completa a interpretação — nada é lançado ainda.
+            Não tive certeza suficiente para decidir sozinho. Confirme agora e eu posso lembrar da próxima vez.
           </DialogDescription>
         </DialogHeader>
 
         <div className="rounded-xl border border-primary/20 bg-primary/5 px-3 py-2 text-sm">
           <p className="font-semibold text-foreground">{brl(amount)}</p>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            {[hint || "Sem fornecedor", kind === "income" ? "Entrada" : "Saída", summaryCategory].join(" · ")}
+            {[hint || "Sem descrição", kind === "income" ? "Dinheiro entrou" : "Dinheiro saiu", summaryCategory].join(" · ")}
           </p>
         </div>
 
         {needsEntity && needsCategory ? (
           <div className="grid gap-3">
             <div>
-              <p className="mb-1.5 text-[11px] uppercase tracking-wider text-muted-foreground">Entidade</p>
+              <p className="mb-1.5 text-[11px] font-medium text-muted-foreground">De quem é?</p>
               <Select value={entityId} onValueChange={setEntityId}>
-                <SelectTrigger className="h-11"><SelectValue placeholder="Selecione a empresa" /></SelectTrigger>
+                <SelectTrigger className="h-11"><SelectValue placeholder="Escolha" /></SelectTrigger>
                 <SelectContent>
                   {activeEntities.map((item) => (
                     <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
@@ -85,9 +85,9 @@ export function DisambiguationDialog({
               </Select>
             </div>
             <div>
-              <p className="mb-1.5 text-[11px] uppercase tracking-wider text-muted-foreground">Categoria</p>
+              <p className="mb-1.5 text-[11px] font-medium text-muted-foreground">Como quer organizar?</p>
               <Select value={categoryId} onValueChange={setCategoryId}>
-                <SelectTrigger className="h-11"><SelectValue placeholder="Selecione a categoria" /></SelectTrigger>
+                <SelectTrigger className="h-11"><SelectValue placeholder="Escolha" /></SelectTrigger>
                 <SelectContent>
                   {activeCategories.map((item) => (
                     <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
@@ -133,13 +133,13 @@ export function DisambiguationDialog({
         )}
 
         {canRemember ? (
-          <label className="flex min-h-11 items-start gap-3 rounded-xl border border-border bg-background/60 px-3 py-2 text-sm">
+          <label className="flex min-h-11 items-start gap-3 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2 text-sm">
             <Checkbox
               className="mt-0.5 size-5"
               checked={remember}
               onCheckedChange={(value) => setRemember(value === true)}
             />
-            <span>Lembrar esta escolha para lançamentos parecidos</span>
+            <span><strong>Aprender esta escolha.</strong><br /><span className="text-xs text-muted-foreground">Na próxima movimentação parecida, eu tento preencher sozinho.</span></span>
           </label>
         ) : null}
 
