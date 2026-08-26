@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   LayoutDashboard,
@@ -33,6 +33,7 @@ import { MobileQuickEntry } from "./MobileQuickEntry";
 import { QuickDocumentUpload, type UploadedDocument } from "./QuickDocumentUpload";
 import { PwaInstallButton } from "./PwaInstallButton";
 import { ALL } from "@/lib/finance";
+import { detectTransactionAnomalies } from "@/lib/finance-anomalies";
 
 const PRIMARY_NAV = [
   { to: "/dashboard", label: "Início", icon: LayoutDashboard },
@@ -69,7 +70,7 @@ function Brand() {
   );
 }
 
-function NavItem({ to, label, icon: Icon, onNavigate }: { to: string; label: string; icon: typeof LayoutDashboard; onNavigate?: () => void }) {
+function NavItem({ to, label, icon: Icon, onNavigate, badge }: { to: string; label: string; icon: typeof LayoutDashboard; onNavigate?: () => void; badge?: number }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const active = pathname === to;
   return (
@@ -82,15 +83,20 @@ function NavItem({ to, label, icon: Icon, onNavigate }: { to: string; label: str
       )}
     >
       <Icon className="size-4 shrink-0" />
-      {label}
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      {badge && badge > 0 ? (
+        <span className="num flex min-w-5 items-center justify-center rounded-full border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-amber-500">
+          {badge > 99 ? "99+" : badge}
+        </span>
+      ) : null}
     </Link>
   );
 }
 
-function NavList({ onNavigate }: { onNavigate?: () => void }) {
+function NavList({ onNavigate, reviewCount = 0 }: { onNavigate?: () => void; reviewCount?: number }) {
   return (
     <nav className="flex flex-col gap-1">
-      {PRIMARY_NAV.map((item) => <NavItem key={item.to} {...item} onNavigate={onNavigate} />)}
+      {PRIMARY_NAV.map((item) => <NavItem key={item.to} {...item} badge={item.to === "/revisar" ? reviewCount : undefined} onNavigate={onNavigate} />)}
 
       <div className="mt-5 px-3 pb-1 text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground/70">
         Mais ferramentas
@@ -117,9 +123,37 @@ function EntitySelector() {
 
 export function AppShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
+  const { data, entityId } = useEntityScope();
   const [open, setOpen] = useState(false);
   const [quickEntryOpen, setQuickEntryOpen] = useState(false);
   const [documents, setDocuments] = useState<UploadedDocument[]>([]);
+  const [pendingDocumentCount, setPendingDocumentCount] = useState(0);
+
+  const loadPendingDocumentCount = useCallback(async () => {
+    const { data: rows } = await supabase
+      .from("financial_documents")
+      .select("id")
+      .in("status", ["uploaded", "processing", "interpreted", "failed"]);
+    setPendingDocumentCount(rows?.length ?? 0);
+  }, []);
+
+  useEffect(() => {
+    void loadPendingDocumentCount();
+  }, [loadPendingDocumentCount]);
+
+  const reviewTransactionCount = useMemo(() => {
+    const scopedTransactions = data.transactions.filter(
+      (tx) => !tx.deleted_at && tx.kind !== "transfer" && (entityId === "all" || tx.entity_id === entityId),
+    );
+    const ids = new Set<string>();
+    scopedTransactions.forEach((tx) => {
+      if (!tx.category_id || !tx.account_id) ids.add(tx.id);
+    });
+    detectTransactionAnomalies(data, entityId).forEach((item) => ids.add(item.transaction.id));
+    return ids.size;
+  }, [data, entityId]);
+
+  const reviewCount = pendingDocumentCount + reviewTransactionCount;
 
   const signOut = async () => {
     await supabase.auth.signOut();
@@ -128,7 +162,10 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-background">
-      <Dialog open={quickEntryOpen} onOpenChange={setQuickEntryOpen}>
+      <Dialog open={quickEntryOpen} onOpenChange={(nextOpen) => {
+        setQuickEntryOpen(nextOpen);
+        if (!nextOpen) void loadPendingDocumentCount();
+      }}>
         <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] overflow-y-auto rounded-2xl border-primary/25 bg-background p-2 sm:max-h-[90vh] sm:max-w-xl sm:p-5">
           <DialogHeader className="px-2 pt-2 sm:px-1 sm:pt-1">
             <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
@@ -145,7 +182,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-sidebar-border bg-sidebar px-4 py-5 lg:flex">
         <Brand />
-        <div className="mt-8 flex-1 overflow-y-auto"><NavList /></div>
+        <div className="mt-8 flex-1 overflow-y-auto"><NavList reviewCount={reviewCount} /></div>
         <Button variant="ghost" className="justify-start gap-3 text-muted-foreground" onClick={signOut}><LogOut className="size-4" /> Sair</Button>
       </aside>
 
@@ -162,7 +199,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <SheetContent side="left" className="w-[88vw] max-w-80 overflow-y-auto bg-sidebar px-4 py-5">
                   <SheetTitle className="sr-only">Menu</SheetTitle>
                   <Brand />
-                  <div className="mt-8"><NavList onNavigate={() => setOpen(false)} /></div>
+                  <div className="mt-8"><NavList reviewCount={reviewCount} onNavigate={() => setOpen(false)} /></div>
                   <div className="mt-5 border-t border-border pt-4 sm:hidden"><PwaInstallButton /></div>
                   <Button variant="ghost" className="mt-4 w-full justify-start gap-3 text-muted-foreground" onClick={signOut}><LogOut className="size-4" /> Sair</Button>
                 </SheetContent>
