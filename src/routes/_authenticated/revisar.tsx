@@ -6,6 +6,7 @@ import { useEntityScope } from "@/components/finance/EntityContext";
 import { PageHeader } from "@/components/finance/PageHeader";
 import { Button } from "@/components/ui/button";
 import { brl, fmtDate, isOpen } from "@/lib/finance";
+import { detectTransactionAnomalies } from "@/lib/finance-anomalies";
 
 export const Route = createFileRoute("/_authenticated/revisar")({
   head: () => ({ meta: [{ title: "Para revisar — Aurelian Finance" }] }),
@@ -60,7 +61,8 @@ function ReviewInbox() {
     [scopedTransactions],
   );
 
-  const total = documents.length + uncategorized.length + withoutAccount.length;
+  const anomalies = useMemo(() => detectTransactionAnomalies(data, entityId), [data, entityId]);
+  const total = documents.length + uncategorized.length + withoutAccount.length + anomalies.length;
 
   return (
     <div className="min-w-0">
@@ -83,6 +85,36 @@ function ReviewInbox() {
           {total === 0 ? <CheckCircle2 className="size-8 text-primary" /> : <AlertTriangle className="size-8 text-amber-500" />}
         </div>
       </section>
+
+      {anomalies.length > 0 ? (
+        <section className="panel mt-4 border-amber-500/25 p-4 sm:p-5">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="mt-0.5 size-5 shrink-0 text-amber-500" />
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 className="text-sm font-semibold">Lançamentos que parecem estranhos</h2>
+                  <p className="mt-1 text-xs text-muted-foreground">Eu não alterei nada. Só separei o que vale conferir antes de confiar nos números.</p>
+                </div>
+                <Link to="/consultor-riscos" className="text-xs font-medium text-primary hover:underline">Ver análise completa</Link>
+              </div>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                {anomalies.slice(0, 6).map((item) => (
+                  <div key={item.id} className={`rounded-xl border p-3 ${item.severity === "critical" ? "border-destructive/25 bg-destructive/5" : "border-amber-500/25 bg-amber-500/5"}`}>
+                    <p className="text-xs font-medium">{item.title}</p>
+                    <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-muted-foreground">{item.body}</p>
+                    <div className="mt-2 flex items-center justify-between gap-2">
+                      <span className="truncate text-[10px] text-muted-foreground">{item.transaction.description}</span>
+                      <span className="num shrink-0 text-[11px] font-medium">{brl(Number(item.transaction.amount))}</span>
+                    </div>
+                    {item.relatedTransaction ? <p className="mt-1 text-[10px] text-muted-foreground">Outro parecido: {fmtDate(item.relatedTransaction.competence_date)}</p> : null}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       <div className="mt-4 grid gap-4 xl:grid-cols-3">
         <ReviewCard
