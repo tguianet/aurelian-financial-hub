@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useEntityScope } from "@/components/finance/EntityContext";
+import { DecisionSimulator } from "@/components/finance/DecisionSimulator";
 import { PageHeader } from "@/components/finance/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -370,6 +371,14 @@ function AurelianAdvisor() {
           <Button variant="outline" className="mt-3 w-full" asChild><Link to="/projecao">Ver projeção completa</Link></Button>
         </section>
       </div>
+
+      <DecisionSimulator
+        entityName={entityName}
+        balance={kpis.balance}
+        freeCash={kpis.freeCash}
+        projections={projections}
+        onAskAurelian={(prompt) => void answerQuestion(prompt)}
+      />
 
       <section className="panel mt-4 p-4 sm:p-5">
         <div className="flex items-start gap-3">
