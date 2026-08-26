@@ -1,10 +1,16 @@
+import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { AlertTriangle, ArrowDownToLine, ArrowRight, ArrowUpFromLine, CheckCircle2, Clock3, LineChart as LineChartIcon, ShieldCheck, TrendingDown, TrendingUp, Wallet } from "lucide-react";
+import { AlertTriangle, ArrowDownToLine, ArrowRight, ArrowUpFromLine, Check, CheckCircle2, Clock3, LineChart as LineChartIcon, ShieldCheck, TrendingDown, TrendingUp, Wallet } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+import { useFinanceAccess } from "@/hooks/useFinanceAccess";
+import { useRefreshFinance } from "@/hooks/useFinance";
 import { useEntityScope } from "@/components/finance/EntityContext";
 import { KpiCard } from "@/components/finance/KpiCard";
 import { PageHeader } from "@/components/finance/PageHeader";
 import { TransactionDialog } from "@/components/finance/TransactionDialog";
+import { Button } from "@/components/ui/button";
 import {
   addDays,
   brl,
@@ -12,13 +18,17 @@ import {
   compact,
   computeKpis,
   entitySummaries,
+  fmtDate,
   isOpen,
   monthLabel,
   projection,
   toDate,
   today,
+  type Transaction,
 } from "@/lib/finance";
+import { localDateIso } from "@/lib/date";
 import { addMoney } from "@/lib/money";
+import { rpcErrorMessage } from "@/lib/rpc-error";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({ meta: [{ title: "Início — Aurelian Finance" }] }),
@@ -27,6 +37,10 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 
 function Dashboard() {
   const { data, entityId, entityName, isLoading } = useEntityScope();
+  const { canWrite } = useFinanceAccess();
+  const refresh = useRefreshFinance();
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [settlingId, setSettlingId] = useState<string | null>(null);
   const ref = today();
   const k = computeKpis(data, entityId, ref);
   const scope = buildScope(data, entityId);
@@ -58,6 +72,34 @@ function Dashboard() {
   const overduePayments = openTransactions.filter((t) => t.kind === "expense" && toDate(t.due_date ?? t.competence_date) < ref);
   const overdueReceipts = openTransactions.filter((t) => t.kind === "income" && toDate(t.due_date ?? t.competence_date) < ref);
   const dueToday = openTransactions.filter((t) => toDate(t.due_date ?? t.competence_date).toDateString() === ref.toDateString());
+  const actionable = [...openTransactions]
+    .filter((t) => toDate(t.due_date ?? t.competence_date) <= ref)
+    .sort((a, b) => (a.due_date ?? a.competence_date).localeCompare(b.due_date ?? b.competence_date))
+    .slice(0, 4);
+
+  const settle = async (transaction: Transaction) => {
+    if (!canWrite || transaction.is_demo) return;
+    if (confirmingId !== transaction.id) {
+      setConfirmingId(transaction.id);
+      return;
+    }
+
+    setSettlingId(transaction.id);
+    const { error } = await supabase.rpc("settle_transaction", {
+      p_id: transaction.id,
+      p_paid_at: localDateIso(),
+    });
+    setSettlingId(null);
+    setConfirmingId(null);
+
+    if (error) {
+      toast.error(rpcErrorMessage(error, transaction.kind === "income" ? "Não consegui confirmar esse recebimento." : "Não consegui confirmar esse pagamento."));
+      return;
+    }
+
+    toast.success(transaction.kind === "income" ? "Recebimento confirmado." : "Pagamento confirmado.");
+    refresh();
+  };
 
   const priorities = [
     overduePayments.length > 0 ? {
@@ -153,6 +195,54 @@ function Dashboard() {
             <div><p className="text-sm font-medium">Nada urgente agora</p><p className="text-xs text-muted-foreground">Você pode seguir acompanhando normalmente ou registrar uma nova movimentação.</p></div>
           </div>
         )}
+
+        {actionable.length > 0 ? (
+          <div className="mt-4 border-t border-border pt-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-semibold">Resolver agora</h3>
+                <p className="text-[11px] text-muted-foreground">Confirme pagamentos e recebimentos sem sair do Início.</p>
+              </div>
+              <Link to="/pendencias" className="text-xs text-primary hover:underline">Ver todos</Link>
+            </div>
+            <div className="grid gap-2">
+              {actionable.map((transaction) => {
+                const isIncome = transaction.kind === "income";
+                const due = transaction.due_date ?? transaction.competence_date;
+                const entity = data.entities.find((item) => item.id === transaction.entity_id);
+                const confirming = confirmingId === transaction.id;
+                const settling = settlingId === transaction.id;
+                return (
+                  <div key={transaction.id} className="flex flex-col gap-3 rounded-xl border border-border bg-surface/60 p-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className={`size-2 shrink-0 rounded-full ${isIncome ? "bg-success" : "bg-destructive"}`} />
+                        <p className="truncate text-sm font-medium">{transaction.description}</p>
+                      </div>
+                      <p className="mt-1 text-[11px] text-muted-foreground">
+                        {entity?.name ?? "Sem empresa"} · {fmtDate(due)} · <span className={isIncome ? "text-success" : "text-destructive"}>{brl(Number(transaction.amount))}</span>
+                      </p>
+                    </div>
+                    {transaction.is_demo || !canWrite ? (
+                      <Link to="/pendencias" className="text-xs font-medium text-primary hover:underline">Abrir</Link>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant={confirming ? "default" : "outline"}
+                        className="min-w-32 gap-1.5"
+                        disabled={settling}
+                        onClick={() => void settle(transaction)}
+                      >
+                        <Check className="size-3.5" />
+                        {settling ? "Confirmando…" : confirming ? (isIncome ? "Confirmar recebimento" : "Confirmar pagamento") : (isIncome ? "Recebi" : "Paguei")}
+                      </Button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
       </section>
 
       <div className="panel relative overflow-hidden p-4 sm:p-5 md:p-8">
