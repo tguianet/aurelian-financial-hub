@@ -44,7 +44,7 @@ const QUICK_QUESTIONS = [
 function ConsultorFinanceiro() {
   const { data, entityId, entityName, isLoading } = useEntityScope();
   const ref = today();
-  const monthKey = ref.slice(0, 7);
+  const currentMonth = ref.slice(0, 7);
   const kpis = computeKpis(data, entityId, ref);
   const scope = buildScope(data, entityId);
   const summaries = entitySummaries(data, ref);
@@ -61,13 +61,13 @@ function ConsultorFinanceiro() {
   const expenseByCategory = useMemo(() => {
     const totals = new Map<string, number>();
     for (const tx of data.transactions) {
-      if (tx.kind !== "expense" || tx.kind === "transfer" || tx.deleted_at || !scope.matchesEntity(tx.entity_id)) continue;
-      if (!tx.competence_date.startsWith(monthKey)) continue;
+      if (tx.kind !== "expense" || tx.deleted_at || !scope.matchesEntity(tx.entity_id)) continue;
+      if (!tx.competence_date.startsWith(currentMonth)) continue;
       const key = tx.category_id ?? "__sem_categoria__";
       totals.set(key, addMoney(totals.get(key) ?? 0, Number(tx.amount)));
     }
     for (const purchase of data.purchases) {
-      if (!scope.matchesEntity(purchase.entity_id) || !purchase.purchase_date.startsWith(monthKey)) continue;
+      if (!scope.matchesEntity(purchase.entity_id) || !purchase.purchase_date.startsWith(currentMonth)) continue;
       const key = purchase.category_id ?? "__sem_categoria__";
       totals.set(key, addMoney(totals.get(key) ?? 0, Number(purchase.total_amount)));
     }
@@ -80,7 +80,7 @@ function ConsultorFinanceiro() {
         total,
       }))
       .sort((a, b) => b.total - a.total);
-  }, [data.categories, data.purchases, data.transactions, monthKey, scope]);
+  }, [currentMonth, data.categories, data.purchases, data.transactions, scope]);
 
   const bestEntity = useMemo(() => {
     const allowed = entityId === ALL ? summaries : summaries.filter((item) => item.entity.id === entityId);
