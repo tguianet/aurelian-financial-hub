@@ -27,11 +27,12 @@ import {
 type PaymentMethod = "pix" | "cash" | "debit" | "credit" | "boleto" | "transfer" | "other";
 
 type Draft = {
-  kind: Exclude<TxKind, "transfer">;
+  kind: TxKind;
   amount: number;
   entityId: string | null;
   categoryId: string | null;
   accountId: string | null;
+  toAccountId: string | null;
   creditCardId: string | null;
   paymentMethod: PaymentMethod;
   description: string;
@@ -104,19 +105,21 @@ function parseAmount(text: string) {
   return null;
 }
 
-function inferKind(text: string): Draft["kind"] {
+function inferKind(text: string): Exclude<TxKind, "transfer"> {
   const n = normalize(text);
   const incomeWords = ["recebi", "receber", "entrou", "entrada", "vendi", "venda", "ganhei", "comissao", "faturei"];
   return incomeWords.some((word) => n.includes(word)) ? "income" : "expense";
 }
 
-function inferPending(text: string, kind: Draft["kind"]) {
+function inferPending(text: string, kind: TxKind) {
+  if (kind === "transfer") return false;
   const n = normalize(text);
   if (kind === "income") return /(para (eu )?receber|a receber|vou receber|ainda vou receber|nao recebi)/.test(n);
   return /(para pagar|a pagar|vou pagar|ainda vou pagar|nao paguei)/.test(n);
 }
 
-function inferPaymentMethod(text: string, kind: Draft["kind"]): PaymentMethod {
+function inferPaymentMethod(text: string, kind: TxKind): PaymentMethod {
+  if (kind === "transfer") return "transfer";
   const n = normalize(text);
   if (/\bpix\b/.test(n)) return "pix";
   if (kind === "expense" && /cartao de credito|credito|no credito/.test(n)) return "credit";
@@ -135,6 +138,13 @@ function paymentMethodLabel(method: PaymentMethod) {
   if (method === "boleto") return "Boleto";
   if (method === "transfer") return "Transferência";
   return "Outro";
+}
+
+function hasInternalTransferIntent(text: string, mentionedAccounts: number) {
+  const n = normalize(text);
+  const explicitOwnMovement = /(entre (as )?minhas contas|de uma conta (para|pra) outra|minha conta.+(para|pra).+minha conta|movi dinheiro|movimentei dinheiro|passei dinheiro)/.test(n);
+  const transferVerb = /(transferi|transferencia|movi|movimentei|passei)/.test(n);
+  return explicitOwnMovement || (transferVerb && mentionedAccounts >= 2);
 }
 
 function removeEntityMention(text: string, entityName?: string) {
@@ -162,7 +172,7 @@ export function MobileQuickEntry({ documents = [] }: Props) {
     [data.semanticRules],
   );
 
-  const resolveFields = (originalText: string, kind: Draft["kind"], categoryHint?: string | null) =>
+  const resolveFields = (originalText: string, kind: Exclude<TxKind, "transfer">, categoryHint?: string | null) =>
     resolveQuickEntryFields({
       text: originalText,
       kind,
@@ -172,6 +182,23 @@ export function MobileQuickEntry({ documents = [] }: Props) {
       preferredEntityId: selectedEntityId !== "all" ? selectedEntityId : null,
       categoryHint: categoryHint ?? originalText,
     });
+
+  const mentionedAccountsInText = (originalText: string) => {
+    const normalizedText = normalize(originalText);
+    return data.accounts
+      .filter((account) => account.active)
+      .map((account) => {
+        const candidates = [account.name, account.bank ?? ""]
+          .map(normalize)
+          .filter((value) => value.length >= 3);
+        const indexes = candidates
+          .map((value) => normalizedText.indexOf(value))
+          .filter((index) => index >= 0);
+        return { account, index: indexes.length ? Math.min(...indexes) : -1 };
+      })
+      .filter((item) => item.index >= 0)
+      .sort((a, b) => a.index - b.index);
+  };
 
   const accountForEntity = (entityId: string | null, preferredAccountId?: string | null, originalText?: string) => {
     if (!entityId) return null;
@@ -204,7 +231,12 @@ export function MobileQuickEntry({ documents = [] }: Props) {
     return activeCards.length === 1 ? activeCards[0]?.id ?? null : null;
   };
 
-  const presentDraft = (result: Draft, resolution: QuickEntryResolution) => {
+  const presentDraft = (result: Draft, resolution?: QuickEntryResolution) => {
+    if (result.kind === "transfer" || !resolution) {
+      setPending(null);
+      setDraft(result);
+      return;
+    }
     if (resolution.appliedRule?.id) {
       void supabase.rpc("touch_finance_semantic_rule_usage", { p_id: resolution.appliedRule.id });
     }
@@ -246,6 +278,7 @@ export function MobileQuickEntry({ documents = [] }: Props) {
         entityId: resolved.entityId,
         categoryId: resolved.categoryId,
         accountId: paymentMethod === "credit" ? null : accountForEntity(resolved.entityId, ai.account_id, originalText),
+        toAccountId: null,
         creditCardId: paymentMethod === "credit" ? cardForEntity(resolved.entityId, originalText) : null,
         paymentMethod,
         description: ai.description?.trim() || ai.vendor?.trim() || originalText || "Documento financeiro",
@@ -262,6 +295,32 @@ export function MobileQuickEntry({ documents = [] }: Props) {
     const installment = parseInstallment(originalText);
     const amount = installment?.installmentAmount ?? parseAmount(originalText);
     if (!amount) return null;
+
+    const mentionedAccounts = mentionedAccountsInText(originalText);
+    if (hasInternalTransferIntent(originalText, mentionedAccounts.length)) {
+      const source = mentionedAccounts[0]?.account ?? null;
+      const destination = mentionedAccounts.find((item) => item.account.id !== source?.id)?.account ?? null;
+      const entityId = source?.entity_id ?? (selectedEntityId !== "all" ? selectedEntityId : null);
+      const fallbackSource = source?.id ?? accountForEntity(entityId, null, undefined);
+      const result: Draft = {
+        kind: "transfer",
+        amount: roundMoney(amount),
+        entityId: source?.entity_id ?? entityId,
+        categoryId: null,
+        accountId: fallbackSource,
+        toAccountId: destination?.id ?? null,
+        creditCardId: null,
+        paymentMethod: "transfer",
+        description: "Transferência entre contas",
+        originalText,
+        parser: "local",
+        documentDate: null,
+        vendor: null,
+        pending: false,
+      };
+      return { result, resolved: null, skipAi: true };
+    }
+
     const kind = inferKind(originalText);
     const resolved = resolveFields(originalText, kind);
     const entity = resolved.entityId ? data.entities.find((item) => item.id === resolved.entityId) : undefined;
@@ -279,6 +338,7 @@ export function MobileQuickEntry({ documents = [] }: Props) {
       entityId: resolved.entityId,
       categoryId: resolved.categoryId,
       accountId: paymentMethod === "credit" ? null : accountForEntity(resolved.entityId, null, originalText),
+      toAccountId: null,
       creditCardId: paymentMethod === "credit" ? cardForEntity(resolved.entityId, originalText) : null,
       paymentMethod,
       description: stripped || resolved.originalHint || (kind === "income" ? "Entrada rápida" : "Saída rápida"),
@@ -350,7 +410,7 @@ export function MobileQuickEntry({ documents = [] }: Props) {
     }
 
     const local = localInterpret(originalText);
-    if (local?.skipAi) { presentDraft(local.result, local.resolved); setInterpreting(false); return; }
+    if (local?.skipAi) { presentDraft(local.result, local.resolved ?? undefined); setInterpreting(false); return; }
     try {
       const ai = await aiInterpret(originalText);
       if (ai) { presentDraft(ai.draft, ai.resolution); setInterpreting(false); return; }
@@ -358,7 +418,7 @@ export function MobileQuickEntry({ documents = [] }: Props) {
       console.warn("Fallback OpenAI indisponível", error);
     }
     setInterpreting(false);
-    if (local?.result) { presentDraft(local.result, local.resolved); toast.message("Usei a interpretação local. Confira antes de confirmar."); return; }
+    if (local?.result) { presentDraft(local.result, local.resolved ?? undefined); toast.message("Usei a interpretação local. Confira antes de confirmar."); return; }
     toast.error("Não consegui interpretar. Ajuste o texto ou anexe um documento.");
   };
 
@@ -388,9 +448,13 @@ export function MobileQuickEntry({ documents = [] }: Props) {
     if (!draft || !user) return;
     if (!canWrite) { toast.error("Seu acesso é somente leitura."); return; }
     if (!draft.entityId) { toast.error("Escolha de quem é essa movimentação."); return; }
+    const isTransfer = draft.kind === "transfer";
     const isCreditPurchase = draft.kind === "expense" && draft.paymentMethod === "credit";
+    if (isTransfer && !draft.accountId) { toast.error("Escolha de qual conta o dinheiro saiu."); return; }
+    if (isTransfer && !draft.toAccountId) { toast.error("Escolha para qual conta o dinheiro foi."); return; }
+    if (isTransfer && draft.accountId === draft.toAccountId) { toast.error("A conta de origem e a conta de destino precisam ser diferentes."); return; }
     if (isCreditPurchase && !draft.creditCardId) { toast.error("Escolha qual cartão de crédito foi usado."); return; }
-    if (!isCreditPurchase && !draft.accountId) { toast.error("Escolha em qual conta o dinheiro entrou ou saiu."); return; }
+    if (!isTransfer && !isCreditPurchase && !draft.accountId) { toast.error("Escolha em qual conta o dinheiro entrou ou saiu."); return; }
     if (saving) return;
 
     setSaving(true);
@@ -425,24 +489,25 @@ export function MobileQuickEntry({ documents = [] }: Props) {
       p_kind: draft.kind,
       p_description: draft.description,
       p_amount: draft.amount,
-      p_category_id: draft.categoryId ?? undefined,
-      p_to_account_id: undefined,
-      p_payment_method: draft.paymentMethod,
+      p_category_id: isTransfer ? undefined : draft.categoryId ?? undefined,
+      p_to_account_id: isTransfer ? draft.toAccountId ?? undefined : undefined,
+      p_payment_method: isTransfer ? "transfer" : draft.paymentMethod,
       p_competence_date: txDate,
       p_due_date: txDate,
-      p_status: isPending ? "pending" : draft.kind === "income" ? "received" : "paid",
+      p_status: isTransfer ? "paid" : isPending ? "pending" : draft.kind === "income" ? "received" : "paid",
       p_notes: `Comando original: ${draft.originalText || "Documento anexado"}${draft.vendor ? ` | Documento: ${draft.vendor}` : ""}`,
-      p_installments: installments,
-      p_amount_mode: installments > 1 ? "each" : "total",
-      p_shift_competence: installments > 1,
+      p_installments: isTransfer ? 1 : installments,
+      p_amount_mode: isTransfer ? "total" : installments > 1 ? "each" : "total",
+      p_shift_competence: isTransfer ? false : installments > 1,
       p_source: source,
       p_idempotency_key: idempotencyKeyRef.current,
     } as never);
     setSaving(false);
-    if (error || !txId) { toast.error(rpcErrorMessage(error, "Não foi possível confirmar o lançamento.")); return; }
+    if (error || !txId) { toast.error(rpcErrorMessage(error, isTransfer ? "Não foi possível transferir entre as contas." : "Não foi possível confirmar o lançamento.")); return; }
 
     idempotencyKeyRef.current = null;
-    if (installments > 1) toast.success(`${installments} parcelas criadas no contas a pagar.`);
+    if (isTransfer) toast.success("Transferência registrada sem contar como receita ou despesa.");
+    else if (installments > 1) toast.success(`${installments} parcelas criadas no contas a pagar.`);
     else toast.success(isPending ? (draft.kind === "income" ? "Conta a receber criada." : "Conta a pagar criada.") : "Lançamento confirmado.");
     setDraft(null);
     setText("");
@@ -450,9 +515,12 @@ export function MobileQuickEntry({ documents = [] }: Props) {
   };
 
   const account = draft ? data.accounts.find((a) => a.id === draft.accountId) : null;
+  const toAccount = draft ? data.accounts.find((a) => a.id === draft.toAccountId) : null;
   const card = draft ? data.cards.find((c) => c.id === draft.creditCardId) : null;
+  const isTransfer = draft?.kind === "transfer";
   const isCreditPurchase = draft?.kind === "expense" && draft.paymentMethod === "credit";
   const entityAccounts = draft?.entityId ? data.accounts.filter((a) => a.entity_id === draft.entityId && a.active) : [];
+  const destinationAccounts = data.accounts.filter((a) => a.active && a.id !== draft?.accountId);
   const entityCards = draft?.entityId ? data.cards.filter((c) => c.entity_id === draft.entityId && c.active) : [];
 
   return (
@@ -460,7 +528,7 @@ export function MobileQuickEntry({ documents = [] }: Props) {
       <div className="mb-3">
         <div className="flex items-center gap-2 text-primary"><Sparkles className="size-4" /><span className="text-xs font-semibold uppercase tracking-[0.16em]">Lançamento rápido</span></div>
         <h2 className="mt-1 text-lg font-semibold">Conte o que aconteceu</h2>
-        <p className="mt-1 text-xs text-muted-foreground">Ex.: “Paguei 430 de combustível da TGuiaNet no Pix pelo Inter”. Eu organizo o resto para você conferir.</p>
+        <p className="mt-1 text-xs text-muted-foreground">Ex.: “Paguei 430 de combustível da TGuiaNet no Pix pelo Inter” ou “Transferi 500 do Inter para o Nubank”.</p>
       </div>
 
       {review ? (
@@ -472,13 +540,13 @@ export function MobileQuickEntry({ documents = [] }: Props) {
           key={`${pending.draft.originalText}-${pending.draft.amount}`}
           open
           amount={pending.draft.amount}
-          kind={pending.draft.kind}
+          kind={pending.draft.kind === "transfer" ? "expense" : pending.draft.kind}
           hint={pending.resolution.originalHint || pending.draft.vendor || pending.draft.description}
           categoryName={data.categories.find((item) => item.id === pending.draft.categoryId)?.name ?? null}
           needsEntity={pending.resolution.needsEntity}
           needsCategory={pending.resolution.needsCategory}
           entities={data.entities}
-          categories={selectableCategories(data.categories, pending.draft.kind)}
+          categories={pending.draft.kind === "transfer" ? [] : selectableCategories(data.categories, pending.draft.kind)}
           suggestedEntityId={pending.resolution.partialRules.find((rule) => rule.entity_id)?.entity_id ?? pending.draft.entityId}
           suggestedCategoryId={pending.resolution.partialRules.find((rule) => rule.category_id)?.category_id ?? pending.draft.categoryId}
           canRemember={canWrite && pending.resolution.hint.length >= 3}
@@ -505,13 +573,14 @@ export function MobileQuickEntry({ documents = [] }: Props) {
               entityId,
               categoryId,
               accountId: paymentMethod === "credit" ? null : accountForEntity(entityId, pending.draft.accountId, pending.draft.originalText),
+              toAccountId: null,
               creditCardId: paymentMethod === "credit" ? cardForEntity(entityId, pending.draft.originalText) : null,
             });
           }}
         />
       ) : null}
 
-      <Textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} placeholder={documents.length ? "Opcional: diga o que é esse documento" : "Ex.: paguei 430 de combustível no Pix pelo Inter"} className="resize-none bg-background/70 text-base" />
+      <Textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} placeholder={documents.length ? "Opcional: diga o que é esse documento" : "Ex.: transferi 500 do Inter para o Nubank"} className="resize-none bg-background/70 text-base" />
 
       <div className="mt-3 grid grid-cols-2 gap-2">
         <Button variant="outline" className="h-11 gap-2" onClick={listening ? stopVoice : startVoice}>
@@ -529,45 +598,72 @@ export function MobileQuickEntry({ documents = [] }: Props) {
             <span className="rounded-full border border-border px-2 py-0.5 text-[10px] text-muted-foreground">{documents.length ? "IA + documento" : draft.parser === "openai" ? "IA" : "Local"}</span>
           </div>
           <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
-            <div><span className="block text-[11px] text-muted-foreground">O que aconteceu</span><strong>{draft.kind === "income" ? "Dinheiro entrou" : "Dinheiro saiu"}</strong></div>
-            <div><span className="block text-[11px] text-muted-foreground">{draft.installmentCount ? "Valor da parcela" : "Valor"}</span><strong className={draft.kind === "income" ? "text-success" : "text-destructive"}>{brl(draft.amount)}</strong></div>
+            <div><span className="block text-[11px] text-muted-foreground">O que aconteceu</span><strong>{isTransfer ? "Movi dinheiro entre contas" : draft.kind === "income" ? "Dinheiro entrou" : "Dinheiro saiu"}</strong></div>
+            <div><span className="block text-[11px] text-muted-foreground">{draft.installmentCount && !isTransfer ? "Valor da parcela" : "Valor"}</span><strong className={isTransfer ? "" : draft.kind === "income" ? "text-success" : "text-destructive"}>{brl(draft.amount)}</strong></div>
             <div className="col-span-2">
-              <span className="block text-[11px] text-muted-foreground">De quem é</span>
+              <span className="block text-[11px] text-muted-foreground">{isTransfer ? "De quem é o dinheiro" : "De quem é"}</span>
               <Select value={draft.entityId ?? ""} onValueChange={(value) => {
                 const paymentMethod = draft.paymentMethod;
-                setDraft({ ...draft, entityId: value, accountId: paymentMethod === "credit" ? null : accountForEntity(value, null, draft.originalText), creditCardId: paymentMethod === "credit" ? cardForEntity(value, draft.originalText) : null });
+                setDraft({ ...draft, entityId: value, accountId: isTransfer ? accountForEntity(value, null, undefined) : paymentMethod === "credit" ? null : accountForEntity(value, null, draft.originalText), toAccountId: isTransfer ? null : draft.toAccountId, creditCardId: paymentMethod === "credit" ? cardForEntity(value, draft.originalText) : null });
               }}>
                 <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Escolha" /></SelectTrigger>
                 <SelectContent>{data.entities.filter((item) => item.active).map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}</SelectContent>
               </Select>
               {!draft.entityId ? <p className="mt-1 text-[11px] text-muted-foreground">Não consegui identificar. Escolha antes de confirmar.</p> : null}
             </div>
-            <div>
-              <span className="block text-[11px] text-muted-foreground">Organizar em</span>
-              <Select value={draft.categoryId ?? ""} onValueChange={(value) => setDraft({ ...draft, categoryId: value })}>
-                <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Escolha a categoria" /></SelectTrigger>
-                <SelectContent>{selectableCategories(data.categories, draft.kind).map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div><span className="block text-[11px] text-muted-foreground">Situação</span><strong>{draft.pending ? (draft.kind === "income" ? "Ainda vou receber" : "Ainda vou pagar") : (draft.kind === "income" ? "Já recebi" : "Já paguei")}</strong></div>
+            {!isTransfer ? (
+              <div>
+                <span className="block text-[11px] text-muted-foreground">Organizar em</span>
+                <Select value={draft.categoryId ?? ""} onValueChange={(value) => setDraft({ ...draft, categoryId: value })}>
+                  <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Escolha a categoria" /></SelectTrigger>
+                  <SelectContent>{selectableCategories(data.categories, draft.kind).map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+            ) : null}
+            <div><span className="block text-[11px] text-muted-foreground">Situação</span><strong>{isTransfer ? "Transferência interna" : draft.pending ? (draft.kind === "income" ? "Ainda vou receber" : "Ainda vou pagar") : (draft.kind === "income" ? "Já recebi" : "Já paguei")}</strong></div>
             <div><span className="block text-[11px] text-muted-foreground">Quando</span><strong>{draft.documentDate ?? "Hoje"}</strong></div>
-            <div>
-              <span className="block text-[11px] text-muted-foreground">Como</span>
-              <Select value={draft.paymentMethod} onValueChange={(value) => {
-                const paymentMethod = value as PaymentMethod;
-                setDraft({ ...draft, paymentMethod, accountId: paymentMethod === "credit" ? null : accountForEntity(draft.entityId, draft.accountId, draft.originalText), creditCardId: paymentMethod === "credit" ? cardForEntity(draft.entityId, draft.originalText) : null });
-              }}>
-                <SelectTrigger className="mt-1 h-9"><SelectValue>{paymentMethodLabel(draft.paymentMethod)}</SelectValue></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="pix">Pix</SelectItem><SelectItem value="cash">Dinheiro</SelectItem><SelectItem value="debit">Débito</SelectItem>
-                  {draft.kind === "expense" ? <SelectItem value="credit">Cartão de crédito</SelectItem> : null}
-                  <SelectItem value="boleto">Boleto</SelectItem><SelectItem value="transfer">Transferência</SelectItem><SelectItem value="other">Outro</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            {draft.vendor ? <div className="col-span-2"><span className="block text-[11px] text-muted-foreground">O que foi</span><strong>{draft.vendor}</strong></div> : null}
-            {draft.installmentCount ? <><div><span className="block text-[11px] text-muted-foreground">Parcelas</span><strong>{draft.installmentCount}x</strong></div><div><span className="block text-[11px] text-muted-foreground">Total</span><strong>{brl(draft.totalAmount ?? draft.amount * draft.installmentCount)}</strong></div></> : null}
-            {isCreditPurchase ? (
+            {!isTransfer ? (
+              <div>
+                <span className="block text-[11px] text-muted-foreground">Como</span>
+                <Select value={draft.paymentMethod} onValueChange={(value) => {
+                  const paymentMethod = value as PaymentMethod;
+                  setDraft({ ...draft, paymentMethod, accountId: paymentMethod === "credit" ? null : accountForEntity(draft.entityId, draft.accountId, draft.originalText), creditCardId: paymentMethod === "credit" ? cardForEntity(draft.entityId, draft.originalText) : null });
+                }}>
+                  <SelectTrigger className="mt-1 h-9"><SelectValue>{paymentMethodLabel(draft.paymentMethod)}</SelectValue></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pix">Pix</SelectItem><SelectItem value="cash">Dinheiro</SelectItem><SelectItem value="debit">Débito</SelectItem>
+                    {draft.kind === "expense" ? <SelectItem value="credit">Cartão de crédito</SelectItem> : null}
+                    <SelectItem value="boleto">Boleto</SelectItem><SelectItem value="transfer">Transferência</SelectItem><SelectItem value="other">Outro</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
+            {draft.vendor && !isTransfer ? <div className="col-span-2"><span className="block text-[11px] text-muted-foreground">O que foi</span><strong>{draft.vendor}</strong></div> : null}
+            {draft.installmentCount && !isTransfer ? <><div><span className="block text-[11px] text-muted-foreground">Parcelas</span><strong>{draft.installmentCount}x</strong></div><div><span className="block text-[11px] text-muted-foreground">Total</span><strong>{brl(draft.totalAmount ?? draft.amount * draft.installmentCount)}</strong></div></> : null}
+            {isTransfer ? (
+              <>
+                <div className="col-span-2">
+                  <span className="block text-[11px] text-muted-foreground">De qual conta saiu?</span>
+                  <Select value={draft.accountId ?? ""} onValueChange={(value) => {
+                    const selected = data.accounts.find((item) => item.id === value);
+                    setDraft({ ...draft, accountId: value, entityId: selected?.entity_id ?? draft.entityId, toAccountId: draft.toAccountId === value ? null : draft.toAccountId });
+                  }}>
+                    <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Escolha a conta de origem" /></SelectTrigger>
+                    <SelectContent>{entityAccounts.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}{item.bank ? ` · ${item.bank}` : ""}</SelectItem>)}</SelectContent>
+                  </Select>
+                  {!account ? <p className="mt-1 text-[11px] text-muted-foreground">Escolha a conta de onde o dinheiro saiu.</p> : null}
+                </div>
+                <div className="col-span-2">
+                  <span className="block text-[11px] text-muted-foreground">Para qual conta foi?</span>
+                  <Select value={draft.toAccountId ?? ""} onValueChange={(value) => setDraft({ ...draft, toAccountId: value })}>
+                    <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Escolha a conta de destino" /></SelectTrigger>
+                    <SelectContent>{destinationAccounts.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}{item.bank ? ` · ${item.bank}` : ""}</SelectItem>)}</SelectContent>
+                  </Select>
+                  {!toAccount ? <p className="mt-1 text-[11px] text-muted-foreground">Escolha a conta que recebeu o dinheiro.</p> : null}
+                </div>
+                <div className="col-span-2 rounded-lg border border-primary/20 bg-primary/5 p-2 text-[11px] text-muted-foreground">Essa movimentação altera os saldos das contas, mas não entra como receita nem despesa.</div>
+              </>
+            ) : isCreditPurchase ? (
               <div className="col-span-2">
                 <span className="block text-[11px] text-muted-foreground">Cartão</span>
                 <Select value={draft.creditCardId ?? ""} onValueChange={(value) => setDraft({ ...draft, creditCardId: value })}>
@@ -589,7 +685,7 @@ export function MobileQuickEntry({ documents = [] }: Props) {
           </div>
           <div className="mt-4 grid grid-cols-2 gap-2">
             <Button variant="ghost" className="gap-2" onClick={() => { setDraft(null); setPending(null); }}><RotateCcw className="size-4" /> Corrigir</Button>
-            <Button className="gap-2" disabled={saving || !canWrite || !draft.entityId || (isCreditPurchase ? !draft.creditCardId : !draft.accountId)} onClick={confirm}><Check className="size-4" /> {saving ? "Salvando..." : "Sim, confirmar"}</Button>
+            <Button className="gap-2" disabled={saving || !canWrite || !draft.entityId || (isTransfer ? !draft.accountId || !draft.toAccountId || draft.accountId === draft.toAccountId : isCreditPurchase ? !draft.creditCardId : !draft.accountId)} onClick={confirm}><Check className="size-4" /> {saving ? "Salvando..." : "Sim, confirmar"}</Button>
           </div>
         </div>
       ) : null}
