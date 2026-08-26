@@ -3,6 +3,16 @@ import { Bot, GitCompareArrows, ShieldCheck, TriangleAlert } from "lucide-react"
 import { brl } from "@/lib/finance";
 import { parseBRLMoney, roundMoney } from "@/lib/money";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import type { DecisionProjection } from "@/components/finance/DecisionSimulator";
 
 type Props = {
@@ -10,7 +20,9 @@ type Props = {
   freeCash: number;
   projections: DecisionProjection[];
   onAskAurelian?: (question: string) => void;
+  onUsePlan?: () => void;
 };
+
 
 type Scenario = {
   label: string;
@@ -31,9 +43,10 @@ function buildScenario(label: string, amount: number, freeCash: number, projecti
   };
 }
 
-export function ScenarioComparison({ entityName, freeCash, projections, onAskAurelian }: Props) {
+export function ScenarioComparison({ entityName, freeCash, projections, onAskAurelian, onUsePlan }: Props) {
   const [rawA, setRawA] = useState("");
   const [rawB, setRawB] = useState("");
+  const [review, setReview] = useState<Scenario | null>(null);
   const amountA = parseBRLMoney(rawA) ?? 0;
   const amountB = parseBRLMoney(rawB) ?? 0;
 
@@ -53,6 +66,14 @@ export function ScenarioComparison({ entityName, freeCash, projections, onAskAur
     onAskAurelian(`Compare duas decisões para ${entityName}. Plano A: gastar ${brl(amountA)} hoje. Plano B: gastar ${brl(amountB)} hoje. O Dinheiro Livre atual é ${brl(freeCash)}. Compare o impacto em 7, 15, 30, 60 e 90 dias, diga qual plano é mais prudente e explique o principal risco de cada opção.`);
   };
 
+  const confirmPlan = () => {
+    const scenario = review;
+    setReview(null);
+    if (!scenario) return;
+    onAskAurelian?.(`Escolhi o ${scenario.label} para ${entityName}: uma saída de ${brl(scenario.amount)} hoje, deixando ${brl(scenario.freeCashAfter)} de Dinheiro Livre. Monte um plano de execução prudente, indicando o que pagar primeiro, o que adiar e quais riscos observar em 7, 15, 30, 60 e 90 dias. Não considere nenhum lançamento feito.`);
+    onUsePlan?.();
+  };
+
   return (
     <section className="panel mt-4 overflow-hidden border-primary/20 p-4 sm:p-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -62,14 +83,14 @@ export function ScenarioComparison({ entityName, freeCash, projections, onAskAur
             <span className="text-[10px] font-semibold uppercase tracking-[0.16em]">Plano A vs Plano B</span>
           </div>
           <h2 className="mt-1 text-base font-semibold">Compare duas decisões antes de escolher</h2>
-          <p className="mt-1 text-xs text-muted-foreground">Nenhum cenário altera seus dados. A comparação usa a mesma projeção financeira atual para os dois planos.</p>
+          <p className="mt-1 text-xs text-muted-foreground">Nenhum cenário altera seus dados. Escolher um plano não movimenta dinheiro nem cria lançamentos.</p>
         </div>
         {onAskAurelian ? <Button variant="outline" size="sm" className="gap-1.5" disabled={!ready} onClick={askAurelian}><Bot className="size-3.5" /> Pedir parecer</Button> : null}
       </div>
 
       <div className="mt-4 grid gap-3 lg:grid-cols-2">
-        <ScenarioCard label="Plano A" raw={rawA} onChange={setRawA} scenario={scenarioA} ready={amountA > 0} highlighted={winner?.label === "Plano A"} />
-        <ScenarioCard label="Plano B" raw={rawB} onChange={setRawB} scenario={scenarioB} ready={amountB > 0} highlighted={winner?.label === "Plano B"} />
+        <ScenarioCard label="Plano A" raw={rawA} onChange={setRawA} scenario={scenarioA} ready={amountA > 0} highlighted={winner?.label === "Plano A"} onUse={onAskAurelian ? () => setReview(scenarioA) : undefined} />
+        <ScenarioCard label="Plano B" raw={rawB} onChange={setRawB} scenario={scenarioB} ready={amountB > 0} highlighted={winner?.label === "Plano B"} onUse={onAskAurelian ? () => setReview(scenarioB) : undefined} />
       </div>
 
       {ready ? (
@@ -81,9 +102,34 @@ export function ScenarioComparison({ entityName, freeCash, projections, onAskAur
           )}
         </div>
       ) : null}
+
+      <AlertDialog open={review !== null} onOpenChange={(open) => { if (!open) setReview(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Usar o {review?.label}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Isto não lança, não paga e não altera nenhum dado. Eu apenas preparo um plano de execução com o Aurelian IA.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {review ? (
+            <div className="space-y-2 text-xs">
+              <div className="flex items-center justify-between rounded-lg border border-border bg-surface px-3 py-2"><span>Saída hipotética</span><span className="num font-medium">{brl(review.amount)}</span></div>
+              <div className="flex items-center justify-between rounded-lg border border-border bg-surface px-3 py-2"><span>Dinheiro Livre depois</span><span className={`num font-medium ${review.freeCashAfter < 0 ? "text-destructive" : "text-success"}`}>{brl(review.freeCashAfter)}</span></div>
+              <div className="grid grid-cols-5 gap-1.5">
+                {review.projected.map((item) => <div key={item.days} className="rounded-lg border border-border p-2 text-center"><p className="text-[9px] text-muted-foreground">{item.days}d</p><p className={`num mt-1 text-[10px] font-medium ${item.balance < 0 ? "text-destructive" : ""}`}>{brl(item.balance)}</p></div>)}
+              </div>
+            </div>
+          ) : null}
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={(event) => { event.preventDefault(); confirmPlan(); }}>Confirmar plano</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </section>
   );
 }
+
 
 function ScenarioCard({ label, raw, onChange, scenario, ready, highlighted }: {
   label: string;
