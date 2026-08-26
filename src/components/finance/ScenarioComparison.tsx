@@ -23,7 +23,6 @@ type Props = {
   onUsePlan?: () => void;
 };
 
-
 type Scenario = {
   label: string;
   amount: number;
@@ -130,14 +129,14 @@ export function ScenarioComparison({ entityName, freeCash, projections, onAskAur
   );
 }
 
-
-function ScenarioCard({ label, raw, onChange, scenario, ready, highlighted }: {
+function ScenarioCard({ label, raw, onChange, scenario, ready, highlighted, onUse }: {
   label: string;
   raw: string;
   onChange: (value: string) => void;
   scenario: Scenario;
   ready: boolean;
   highlighted: boolean;
+  onUse?: () => void;
 }) {
   return (
     <div className={`rounded-xl border bg-surface p-4 ${highlighted ? "border-primary/40" : "border-border"}`}>
@@ -161,6 +160,7 @@ function ScenarioCard({ label, raw, onChange, scenario, ready, highlighted }: {
           <div className="mt-3 grid grid-cols-5 gap-1.5">
             {scenario.projected.map((item) => <div key={item.days} className="rounded-lg border border-border p-2 text-center"><p className="text-[9px] text-muted-foreground">{item.days}d</p><p className={`num mt-1 text-[10px] font-medium ${item.balance < 0 ? "text-destructive" : ""}`}>{brl(item.balance)}</p></div>)}
           </div>
+          {onUse ? <Button variant="outline" size="sm" className="mt-3 w-full" onClick={onUse}>Usar este plano</Button> : null}
         </>
       ) : <p className="mt-3 text-xs text-muted-foreground">Informe um valor para calcular este cenário.</p>}
     </div>
