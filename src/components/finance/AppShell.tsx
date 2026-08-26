@@ -19,6 +19,7 @@ import {
   Menu,
   LogOut,
   Sparkles,
+  BrainCircuit,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
@@ -36,6 +37,7 @@ const QUICK_ENTRY_SESSION_KEY = "aurelian_quick_entry_opened";
 
 const NAV = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { to: "/consultor", label: "Consultor IA", icon: BrainCircuit },
   { to: "/lancamentos", label: "Lançamentos", icon: ArrowLeftRight },
   { to: "/documentos", label: "Documentos", icon: FolderOpen },
   { to: "/entidades", label: "Empresas", icon: Building2 },
