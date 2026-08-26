@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.15"
+    PostgrestVersion: "14.17"
   }
   public: {
     Tables: {
@@ -542,65 +542,6 @@ export type Database = {
           },
         ]
       }
-      finance_space_members: {
-        Row: {
-          added_by: string | null
-          joined_at: string
-          revoked_at: string | null
-          role: string
-          space_id: string
-          user_id: string
-        }
-        Insert: {
-          added_by?: string | null
-          joined_at?: string
-          revoked_at?: string | null
-          role: string
-          space_id: string
-          user_id: string
-        }
-        Update: {
-          added_by?: string | null
-          joined_at?: string
-          revoked_at?: string | null
-          role?: string
-          space_id?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "finance_space_members_space_id_fkey"
-            columns: ["space_id"]
-            isOneToOne: false
-            referencedRelation: "finance_spaces"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      finance_spaces: {
-        Row: {
-          created_at: string
-          id: string
-          name: string
-          owner_user_id: string
-          updated_at: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          name?: string
-          owner_user_id: string
-          updated_at?: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          name?: string
-          owner_user_id?: string
-          updated_at?: string
-        }
-        Relationships: []
-      }
       finance_semantic_rules: {
         Row: {
           active: boolean
@@ -667,6 +608,65 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      finance_space_members: {
+        Row: {
+          added_by: string | null
+          joined_at: string
+          revoked_at: string | null
+          role: string
+          space_id: string
+          user_id: string
+        }
+        Insert: {
+          added_by?: string | null
+          joined_at?: string
+          revoked_at?: string | null
+          role: string
+          space_id: string
+          user_id: string
+        }
+        Update: {
+          added_by?: string | null
+          joined_at?: string
+          revoked_at?: string | null
+          role?: string
+          space_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "finance_space_members_space_id_fkey"
+            columns: ["space_id"]
+            isOneToOne: false
+            referencedRelation: "finance_spaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      finance_spaces: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          owner_user_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name?: string
+          owner_user_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          owner_user_id?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       financial_documents: {
         Row: {
@@ -1654,7 +1654,10 @@ export type Database = {
         Returns: string
       }
       normalize_category_name: { Args: { p_name: string }; Returns: string }
-      normalize_finance_semantic_hint: { Args: { p_text: string }; Returns: string }
+      normalize_finance_semantic_hint: {
+        Args: { p_text: string }
+        Returns: string
+      }
       pause_recurring_transaction: { Args: { p_id: string }; Returns: boolean }
       pay_credit_card_bill: {
         Args: {
@@ -1736,12 +1739,18 @@ export type Database = {
       }
       toggle_account_active: { Args: { p_id: string }; Returns: boolean }
       toggle_category_active: { Args: { p_id: string }; Returns: boolean }
-      toggle_finance_semantic_rule_active: { Args: { p_id: string }; Returns: boolean }
+      toggle_finance_semantic_rule_active: {
+        Args: { p_id: string }
+        Returns: boolean
+      }
       toggle_financial_entity_active: {
         Args: { p_id: string }
         Returns: boolean
       }
-      touch_finance_semantic_rule_usage: { Args: { p_id: string }; Returns: number }
+      touch_finance_semantic_rule_usage: {
+        Args: { p_id: string }
+        Returns: number
+      }
       update_category: {
         Args: {
           p_ai_keywords?: string[]
@@ -1749,16 +1758,6 @@ export type Database = {
           p_description?: string
           p_id: string
           p_kind: string
-          p_name: string
-        }
-        Returns: string
-      }
-      update_financial_entity: {
-        Args: {
-          p_ai_keywords?: string[]
-          p_color: string
-          p_description?: string
-          p_id: string
           p_name: string
         }
         Returns: string
@@ -1771,6 +1770,16 @@ export type Database = {
           p_id: string
           p_normalized_hint?: string
           p_original_hint?: string
+        }
+        Returns: string
+      }
+      update_financial_entity: {
+        Args: {
+          p_ai_keywords?: string[]
+          p_color: string
+          p_description?: string
+          p_id: string
+          p_name: string
         }
         Returns: string
       }

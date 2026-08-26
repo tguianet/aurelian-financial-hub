@@ -14,6 +14,8 @@ import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedCartoesRouteImport } from './routes/_authenticated/cartoes'
 import { Route as AuthenticatedCategoriasRouteImport } from './routes/_authenticated/categorias'
+import { Route as AuthenticatedConsultorRouteImport } from './routes/_authenticated/consultor'
+import { Route as AuthenticatedConsultorRiscosRouteImport } from './routes/_authenticated/consultor-riscos'
 import { Route as AuthenticatedContasRouteImport } from './routes/_authenticated/contas'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedDocumentosRouteImport } from './routes/_authenticated/documentos'
@@ -26,8 +28,10 @@ import { Route as AuthenticatedProjecaoRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedRecorrenciasRouteImport } from './routes/_authenticated/recorrencias'
 import { Route as AuthenticatedRelatoriosRouteImport } from './routes/_authenticated/relatorios'
 import { Route as AuthenticatedReservasRouteImport } from './routes/_authenticated/reservas'
+import { Route as AuthenticatedRevisarRouteImport } from './routes/_authenticated/revisar'
 import { Route as AuthenticatedWhatsappRouteImport } from './routes/_authenticated/whatsapp'
 import { Route as ConviteTokenRouteImport } from './routes/convite.$token'
+import { Route as ApiFinanceAdvisorRouteImport } from './routes/api.finance.advisor'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -53,6 +57,17 @@ const AuthenticatedCategoriasRoute = AuthenticatedCategoriasRouteImport.update({
   path: '/categorias',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedConsultorRoute = AuthenticatedConsultorRouteImport.update({
+  id: '/consultor',
+  path: '/consultor',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedConsultorRiscosRoute =
+  AuthenticatedConsultorRiscosRouteImport.update({
+    id: '/consultor-riscos',
+    path: '/consultor-riscos',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedContasRoute = AuthenticatedContasRouteImport.update({
   id: '/contas',
   path: '/contas',
@@ -115,6 +130,11 @@ const AuthenticatedReservasRoute = AuthenticatedReservasRouteImport.update({
   path: '/reservas',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedRevisarRoute = AuthenticatedRevisarRouteImport.update({
+  id: '/revisar',
+  path: '/revisar',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedWhatsappRoute = AuthenticatedWhatsappRouteImport.update({
   id: '/whatsapp',
   path: '/whatsapp',
@@ -125,12 +145,19 @@ const ConviteTokenRoute = ConviteTokenRouteImport.update({
   path: '/convite/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiFinanceAdvisorRoute = ApiFinanceAdvisorRouteImport.update({
+  id: '/api/finance/advisor',
+  path: '/api/finance/advisor',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/cartoes': typeof AuthenticatedCartoesRoute
   '/categorias': typeof AuthenticatedCategoriasRoute
+  '/consultor': typeof AuthenticatedConsultorRoute
+  '/consultor-riscos': typeof AuthenticatedConsultorRiscosRoute
   '/contas': typeof AuthenticatedContasRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/documentos': typeof AuthenticatedDocumentosRoute
@@ -143,14 +170,18 @@ export interface FileRoutesByFullPath {
   '/recorrencias': typeof AuthenticatedRecorrenciasRoute
   '/relatorios': typeof AuthenticatedRelatoriosRoute
   '/reservas': typeof AuthenticatedReservasRoute
+  '/revisar': typeof AuthenticatedRevisarRoute
   '/whatsapp': typeof AuthenticatedWhatsappRoute
   '/convite/$token': typeof ConviteTokenRoute
+  '/api/finance/advisor': typeof ApiFinanceAdvisorRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/cartoes': typeof AuthenticatedCartoesRoute
   '/categorias': typeof AuthenticatedCategoriasRoute
+  '/consultor': typeof AuthenticatedConsultorRoute
+  '/consultor-riscos': typeof AuthenticatedConsultorRiscosRoute
   '/contas': typeof AuthenticatedContasRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/documentos': typeof AuthenticatedDocumentosRoute
@@ -163,8 +194,10 @@ export interface FileRoutesByTo {
   '/recorrencias': typeof AuthenticatedRecorrenciasRoute
   '/relatorios': typeof AuthenticatedRelatoriosRoute
   '/reservas': typeof AuthenticatedReservasRoute
+  '/revisar': typeof AuthenticatedRevisarRoute
   '/whatsapp': typeof AuthenticatedWhatsappRoute
   '/convite/$token': typeof ConviteTokenRoute
+  '/api/finance/advisor': typeof ApiFinanceAdvisorRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -173,6 +206,8 @@ export interface FileRoutesById {
   '/auth': typeof AuthRoute
   '/_authenticated/cartoes': typeof AuthenticatedCartoesRoute
   '/_authenticated/categorias': typeof AuthenticatedCategoriasRoute
+  '/_authenticated/consultor': typeof AuthenticatedConsultorRoute
+  '/_authenticated/consultor-riscos': typeof AuthenticatedConsultorRiscosRoute
   '/_authenticated/contas': typeof AuthenticatedContasRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/documentos': typeof AuthenticatedDocumentosRoute
@@ -185,8 +220,10 @@ export interface FileRoutesById {
   '/_authenticated/recorrencias': typeof AuthenticatedRecorrenciasRoute
   '/_authenticated/relatorios': typeof AuthenticatedRelatoriosRoute
   '/_authenticated/reservas': typeof AuthenticatedReservasRoute
+  '/_authenticated/revisar': typeof AuthenticatedRevisarRoute
   '/_authenticated/whatsapp': typeof AuthenticatedWhatsappRoute
   '/convite/$token': typeof ConviteTokenRoute
+  '/api/finance/advisor': typeof ApiFinanceAdvisorRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -195,6 +232,8 @@ export interface FileRouteTypes {
     | '/auth'
     | '/cartoes'
     | '/categorias'
+    | '/consultor'
+    | '/consultor-riscos'
     | '/contas'
     | '/dashboard'
     | '/documentos'
@@ -207,14 +246,18 @@ export interface FileRouteTypes {
     | '/recorrencias'
     | '/relatorios'
     | '/reservas'
+    | '/revisar'
     | '/whatsapp'
     | '/convite/$token'
+    | '/api/finance/advisor'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/auth'
     | '/cartoes'
     | '/categorias'
+    | '/consultor'
+    | '/consultor-riscos'
     | '/contas'
     | '/dashboard'
     | '/documentos'
@@ -227,8 +270,10 @@ export interface FileRouteTypes {
     | '/recorrencias'
     | '/relatorios'
     | '/reservas'
+    | '/revisar'
     | '/whatsapp'
     | '/convite/$token'
+    | '/api/finance/advisor'
   id:
     | '__root__'
     | '/'
@@ -236,6 +281,8 @@ export interface FileRouteTypes {
     | '/auth'
     | '/_authenticated/cartoes'
     | '/_authenticated/categorias'
+    | '/_authenticated/consultor'
+    | '/_authenticated/consultor-riscos'
     | '/_authenticated/contas'
     | '/_authenticated/dashboard'
     | '/_authenticated/documentos'
@@ -248,8 +295,10 @@ export interface FileRouteTypes {
     | '/_authenticated/recorrencias'
     | '/_authenticated/relatorios'
     | '/_authenticated/reservas'
+    | '/_authenticated/revisar'
     | '/_authenticated/whatsapp'
     | '/convite/$token'
+    | '/api/finance/advisor'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -257,6 +306,7 @@ export interface RootRouteChildren {
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
   ConviteTokenRoute: typeof ConviteTokenRoute
+  ApiFinanceAdvisorRoute: typeof ApiFinanceAdvisorRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -294,6 +344,20 @@ declare module '@tanstack/react-router' {
       path: '/categorias'
       fullPath: '/categorias'
       preLoaderRoute: typeof AuthenticatedCategoriasRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/consultor': {
+      id: '/_authenticated/consultor'
+      path: '/consultor'
+      fullPath: '/consultor'
+      preLoaderRoute: typeof AuthenticatedConsultorRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/consultor-riscos': {
+      id: '/_authenticated/consultor-riscos'
+      path: '/consultor-riscos'
+      fullPath: '/consultor-riscos'
+      preLoaderRoute: typeof AuthenticatedConsultorRiscosRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/contas': {
@@ -380,6 +444,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedReservasRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/revisar': {
+      id: '/_authenticated/revisar'
+      path: '/revisar'
+      fullPath: '/revisar'
+      preLoaderRoute: typeof AuthenticatedRevisarRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/whatsapp': {
       id: '/_authenticated/whatsapp'
       path: '/whatsapp'
@@ -394,12 +465,21 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ConviteTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/finance/advisor': {
+      id: '/api/finance/advisor'
+      path: '/api/finance/advisor'
+      fullPath: '/api/finance/advisor'
+      preLoaderRoute: typeof ApiFinanceAdvisorRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedCartoesRoute: typeof AuthenticatedCartoesRoute
   AuthenticatedCategoriasRoute: typeof AuthenticatedCategoriasRoute
+  AuthenticatedConsultorRoute: typeof AuthenticatedConsultorRoute
+  AuthenticatedConsultorRiscosRoute: typeof AuthenticatedConsultorRiscosRoute
   AuthenticatedContasRoute: typeof AuthenticatedContasRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedDocumentosRoute: typeof AuthenticatedDocumentosRoute
@@ -412,12 +492,15 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedRecorrenciasRoute: typeof AuthenticatedRecorrenciasRoute
   AuthenticatedRelatoriosRoute: typeof AuthenticatedRelatoriosRoute
   AuthenticatedReservasRoute: typeof AuthenticatedReservasRoute
+  AuthenticatedRevisarRoute: typeof AuthenticatedRevisarRoute
   AuthenticatedWhatsappRoute: typeof AuthenticatedWhatsappRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedCartoesRoute: AuthenticatedCartoesRoute,
   AuthenticatedCategoriasRoute: AuthenticatedCategoriasRoute,
+  AuthenticatedConsultorRoute: AuthenticatedConsultorRoute,
+  AuthenticatedConsultorRiscosRoute: AuthenticatedConsultorRiscosRoute,
   AuthenticatedContasRoute: AuthenticatedContasRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedDocumentosRoute: AuthenticatedDocumentosRoute,
@@ -430,6 +513,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedRecorrenciasRoute: AuthenticatedRecorrenciasRoute,
   AuthenticatedRelatoriosRoute: AuthenticatedRelatoriosRoute,
   AuthenticatedReservasRoute: AuthenticatedReservasRoute,
+  AuthenticatedRevisarRoute: AuthenticatedRevisarRoute,
   AuthenticatedWhatsappRoute: AuthenticatedWhatsappRoute,
 }
 
@@ -441,6 +525,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
   ConviteTokenRoute: ConviteTokenRoute,
+  ApiFinanceAdvisorRoute: ApiFinanceAdvisorRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
