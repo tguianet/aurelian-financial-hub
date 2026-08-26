@@ -1,3 +1,4 @@
+import { supabase } from "@/integrations/supabase/client";
 import type { FinanceDataset } from "./finance";
 import { ALL, brl, computeKpis, entitySummaries, projection, today } from "./finance";
 import { advisorAlerts, advisorHealth, categoryMovements } from "./finance-advisor";
@@ -29,65 +30,31 @@ function monthKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 }
 
-export function buildAdvisorAiContext(
-  data: FinanceDataset,
-  entityId: string,
-  entityName: string,
-  ref = today(),
-): AdvisorAiContext {
+export function buildAdvisorAiContext(data: FinanceDataset, entityId: string, entityName: string, ref = today()): AdvisorAiContext {
   const kpis = computeKpis(data, entityId, ref);
   const projections = projection(data, entityId, ref)
     .filter((row) => row.days === 7 || row.days === 30 || row.days === 60 || row.days === 90)
     .map((row) => ({ days: row.days, inflow: row.inflow, outflow: row.outflow, balance: row.balance }));
-
   const summaries = entitySummaries(data, ref)
     .filter((row) => entityId === ALL || row.entity.id === entityId)
     .slice(0, 20)
-    .map((row) => ({
-      name: row.entity.name,
-      income: row.income,
-      expense: row.expense,
-      result: row.result,
-      balance: row.balance,
-    }));
-
-  const categories = categoryMovements(data, entityId, ref)
-    .slice(0, 15)
-    .map((row) => ({
-      name: row.name,
-      current: row.current,
-      previous: row.previous,
-      delta: row.delta,
-      deltaPct: row.deltaPct,
-    }));
-
-  const alerts = advisorAlerts(data, entityId, ref)
-    .slice(0, 8)
-    .map((row) => ({ severity: row.severity, title: row.title, body: row.body, action: row.action }));
-
+    .map((row) => ({ name: row.entity.name, income: row.income, expense: row.expense, result: row.result, balance: row.balance }));
+  const categories = categoryMovements(data, entityId, ref).slice(0, 15).map((row) => ({
+    name: row.name, current: row.current, previous: row.previous, delta: row.delta, deltaPct: row.deltaPct,
+  }));
+  const alerts = advisorAlerts(data, entityId, ref).slice(0, 8).map((row) => ({
+    severity: row.severity, title: row.title, body: row.body, action: row.action,
+  }));
   const health = advisorHealth(data, entityId, ref);
-
   return {
-    scope: { entityId, entityName },
-    period: monthKey(ref),
+    scope: { entityId, entityName }, period: monthKey(ref),
     kpis: {
-      balance: kpis.balance,
-      freeCash30d: kpis.freeCash,
-      incomeMonth: kpis.incomeMonth,
-      expenseMonth: kpis.expenseMonth,
-      resultMonth: kpis.resultMonth,
-      receivables: kpis.receivables,
-      payables: kpis.payables,
-      overdueReceivables: kpis.overdueReceivables,
-      overduePayables: kpis.overduePayables,
-      reserves: kpis.reserves,
-      commitments30d: kpis.commitments,
+      balance: kpis.balance, freeCash30d: kpis.freeCash, incomeMonth: kpis.incomeMonth,
+      expenseMonth: kpis.expenseMonth, resultMonth: kpis.resultMonth, receivables: kpis.receivables,
+      payables: kpis.payables, overdueReceivables: kpis.overdueReceivables,
+      overduePayables: kpis.overduePayables, reserves: kpis.reserves, commitments30d: kpis.commitments,
     },
-    projections,
-    entities: summaries,
-    categories,
-    alerts,
-    health,
+    projections, entities: summaries, categories, alerts, health,
   };
 }
 
@@ -108,17 +75,19 @@ export function advisorFallbackSummary(context: AdvisorAiContext) {
 }
 
 export async function requestAdvisorAnswer(question: string, context: AdvisorAiContext): Promise<string> {
+  const session = await supabase.auth.getSession();
+  const token = session.data.session?.access_token;
+  if (!token) throw new Error("Sessão expirada. Entre novamente.");
+
   const response = await fetch("/api/finance/advisor", {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
     body: JSON.stringify({ question, context }),
   });
-
   if (!response.ok) {
     const payload = await response.json().catch(() => null) as { message?: string } | null;
     throw new Error(payload?.message || "Não consegui consultar o Consultor IA agora.");
   }
-
   const payload = await response.json() as { answer?: string };
   if (!payload.answer?.trim()) throw new Error("O Consultor IA não retornou uma resposta válida.");
   return payload.answer.trim();
