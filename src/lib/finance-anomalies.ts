@@ -1,5 +1,5 @@
 import { parseDateOnly } from "./date";
-import type { FinanceData, Transaction } from "./finance";
+import type { FinanceDataset, Transaction } from "./finance";
 
 export type TransactionAnomaly = {
   id: string;
@@ -36,13 +36,13 @@ function median(values: number[]) {
   return ((sorted[middle - 1] ?? 0) + (sorted[middle] ?? 0)) / 2;
 }
 
-function activeTransactions(data: FinanceData, entityId: string) {
+function activeTransactions(data: FinanceDataset, entityId: string) {
   return data.transactions
     .filter((tx) => !tx.deleted_at && !tx.is_demo && tx.kind !== "transfer" && tx.status !== "cancelled" && (entityId === "all" || tx.entity_id === entityId))
     .sort((a, b) => b.competence_date.localeCompare(a.competence_date));
 }
 
-export function detectTransactionAnomalies(data: FinanceData, entityId: string): TransactionAnomaly[] {
+export function detectTransactionAnomalies(data: FinanceDataset, entityId: string): TransactionAnomaly[] {
   const transactions = activeTransactions(data, entityId);
   const anomalies: TransactionAnomaly[] = [];
   const duplicateKeys = new Set<string>();
@@ -71,7 +71,7 @@ export function detectTransactionAnomalies(data: FinanceData, entityId: string):
         transaction: current,
         relatedTransaction: previous,
         title: "Esse lançamento pode estar repetido",
-        body: `Encontrei outro lançamento com o mesmo valor e descrição em uma data muito próxima. Confira antes de considerar os dois.`,
+        body: "Encontrei outro lançamento com o mesmo valor e descrição em uma data muito próxima. Confira antes de considerar os dois.",
       });
       break;
     }
