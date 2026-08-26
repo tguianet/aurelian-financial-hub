@@ -19,6 +19,7 @@ import { useEntityScope } from "@/components/finance/EntityContext";
 import { CashPlanner } from "@/components/finance/CashPlanner";
 import { DecisionSimulator } from "@/components/finance/DecisionSimulator";
 import { PaymentPriorityPanel } from "@/components/finance/PaymentPriorityPanel";
+import { ScenarioComparison } from "@/components/finance/ScenarioComparison";
 import { PageHeader } from "@/components/finance/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -390,6 +391,13 @@ function AurelianAdvisor() {
         entityName={entityName}
         balance={kpis.balance}
         freeCash={kpis.freeCash}
+        onAskAurelian={(prompt) => void answerQuestion(prompt)}
+      />
+
+      <ScenarioComparison
+        entityName={entityName}
+        freeCash={kpis.freeCash}
+        projections={projections}
         onAskAurelian={(prompt) => void answerQuestion(prompt)}
       />
 
