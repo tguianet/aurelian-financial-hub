@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useEntityScope } from "@/components/finance/EntityContext";
+import { CashPlanner } from "@/components/finance/CashPlanner";
 import { DecisionSimulator } from "@/components/finance/DecisionSimulator";
 import { PaymentPriorityPanel } from "@/components/finance/PaymentPriorityPanel";
 import { PageHeader } from "@/components/finance/PageHeader";
@@ -382,6 +383,15 @@ function AurelianAdvisor() {
       />
 
       <PaymentPriorityPanel data={data} entityId={entityId} />
+
+      <CashPlanner
+        data={data}
+        entityId={entityId}
+        entityName={entityName}
+        balance={kpis.balance}
+        freeCash={kpis.freeCash}
+        onAskAurelian={(prompt) => void answerQuestion(prompt)}
+      />
 
       <section className="panel mt-4 p-4 sm:p-5">
         <div className="flex items-start gap-3">
