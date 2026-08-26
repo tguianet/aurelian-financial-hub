@@ -26,6 +26,7 @@ import {
   today,
   type Transaction,
 } from "@/lib/finance";
+import { detectTransactionAnomalies } from "@/lib/finance-anomalies";
 import { localDateIso } from "@/lib/date";
 import { addMoney } from "@/lib/money";
 import { rpcErrorMessage } from "@/lib/rpc-error";
@@ -76,6 +77,7 @@ function Dashboard() {
     .filter((t) => toDate(t.due_date ?? t.competence_date) <= ref)
     .sort((a, b) => (a.due_date ?? a.competence_date).localeCompare(b.due_date ?? b.competence_date))
     .slice(0, 4);
+  const anomaly = detectTransactionAnomalies(data, entityId)[0] ?? null;
 
   const settle = async (transaction: Transaction) => {
     if (!canWrite || transaction.is_demo) return;
@@ -110,6 +112,14 @@ function Dashboard() {
       icon: AlertTriangle,
       tone: "critical" as const,
     } : null,
+    anomaly ? {
+      title: anomaly.title,
+      body: anomaly.body,
+      to: "/revisar" as const,
+      action: "Conferir agora",
+      icon: AlertTriangle,
+      tone: anomaly.severity === "critical" ? "critical" as const : "warning" as const,
+    } : null,
     overdueReceipts.length > 0 ? {
       title: `${overdueReceipts.length} recebimento${overdueReceipts.length > 1 ? "s" : ""} atrasado${overdueReceipts.length > 1 ? "s" : ""}`,
       body: `${brl(overdueReceipts.reduce((sum, item) => addMoney(sum, Number(item.amount)), 0))} já deveria ter entrado.`,
@@ -137,7 +147,7 @@ function Dashboard() {
   ].filter(Boolean).slice(0, 3) as Array<{
     title: string;
     body: string;
-    to: "/pendencias" | "/projecao";
+    to: "/pendencias" | "/projecao" | "/revisar";
     action: string;
     icon: typeof AlertTriangle;
     tone: "critical" | "warning" | "info";
@@ -161,7 +171,7 @@ function Dashboard() {
               {priorities.length > 0 ? `Hoje eu cuidaria de ${priorities.length} ${priorities.length === 1 ? "coisa" : "coisas"}.` : "Hoje está tudo em ordem."}
             </h2>
             <p className="mt-1 text-xs text-muted-foreground">
-              {priorities.length > 0 ? "Coloquei primeiro o que pode afetar seu caixa ou virar problema." : "Não encontrei pagamentos ou recebimentos urgentes agora."}
+              {priorities.length > 0 ? "Coloquei primeiro o que pode afetar seu caixa ou virar problema." : "Não encontrei pagamentos, recebimentos ou lançamentos estranhos que precisem da sua atenção agora."}
             </p>
           </div>
           <Link to="/consultor" className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-primary/25 bg-primary/5 px-3 text-xs font-medium text-primary hover:bg-primary/10">
