@@ -86,21 +86,20 @@ export function TransactionDialog() {
   };
 
   const submit = async () => {
-    const fail = (m: string) => {
-      toast.error(m);
-    };
-    if (!user) return fail("Sessão expirada.");
-    if (!canWrite) return fail("Seu acesso é somente leitura.");
-    if (!entityId) return fail("Selecione a entidade financeira.");
-    if (!description.trim()) return fail("Informe a descrição.");
+    const fail = (m: string) => toast.error(m);
+    if (!user) return fail("Sua sessão expirou. Entre novamente.");
+    if (!canWrite) return fail("Seu acesso permite apenas visualizar.");
+    if (!entityId) return fail("Escolha de quem é essa movimentação.");
+    if (!description.trim()) return fail("Diga o que aconteceu.");
     const value = parseBRLMoney(amount);
     if (value === null || value <= 0) return fail("Informe um valor válido.");
-    if (!isValidDateIso(competence) || !isValidDateIso(due)) return fail("Informe datas válidas.");
+    if (!isValidDateIso(competence) || !isValidDateIso(due)) return fail("Confira as datas.");
+
     if (isCreditPurchase) {
-      if (!cardId) return fail("Selecione o cartão.");
-      if (!cards.some((c) => c.id === cardId)) return fail("Selecione um cartão ativo desta entidade.");
+      if (!cardId) return fail("Escolha o cartão usado.");
+      if (!cards.some((c) => c.id === cardId)) return fail("Escolha um cartão ativo dessa pessoa ou empresa.");
       const count = Math.max(1, Number(installments) || 1);
-      if (count < 1 || count > 48) return fail("Parcelas devem estar entre 1 e 48.");
+      if (count < 1 || count > 48) return fail("Escolha entre 1 e 48 parcelas.");
       setBusy(true);
       const desc = notes.trim() ? `${description.trim()} — ${notes.trim()}` : description.trim();
       const { error } = await supabase.rpc("create_credit_card_purchase", {
@@ -116,19 +115,20 @@ export function TransactionDialog() {
         toast.error(error.message);
         return;
       }
-      toast.success("Compra no cartão registrada. A despesa entra na data da compra; o pagamento da fatura não conta de novo.");
+      toast.success("Compra registrada. Quando você pagar a fatura, o Aurelian não vai contar essa despesa novamente.");
       reset();
       setCardId("");
       setOpen(false);
       refresh();
       return;
     }
-    if (!accountId) return fail("Selecione a conta de origem.");
-    if (kind === "transfer" && !toAccountId) return fail("Selecione a conta de destino.");
-    if (kind === "transfer" && recurrence !== "none") return fail("Recorrência não se aplica a transferência.");
+
+    if (!accountId) return fail("Escolha de qual conta o dinheiro saiu ou entrou.");
+    if (kind === "transfer" && !toAccountId) return fail("Escolha para qual conta o dinheiro foi.");
+    if (kind === "transfer" && recurrence !== "none") return fail("Transferências entre suas contas não podem ser recorrentes aqui.");
 
     if (recurrence !== "none") {
-      if (!categoryId) return fail("Selecione a categoria.");
+      if (!categoryId) return fail("Escolha uma categoria.");
       const weekday = isoWeekday(due);
       setBusy(true);
       const { error } = await supabase.rpc("create_recurring_transaction", {
@@ -151,7 +151,7 @@ export function TransactionDialog() {
         toast.error(error.message);
         return;
       }
-      toast.success("Recorrência criada. A ocorrência do dia entra em pendências; pagar depois não lança a despesa de novo.");
+      toast.success("Pronto. O Aurelian vai lembrar desse compromisso e mostrar quando estiver perto de pagar ou receber.");
       reset();
       setRecurrence("none");
       setOpen(false);
@@ -160,7 +160,7 @@ export function TransactionDialog() {
     }
 
     const total = Math.max(1, Number(installments) || 1);
-    if (!Number.isInteger(total) || total < 1 || total > 48) return fail("Parcelas devem estar entre 1 e 48.");
+    if (!Number.isInteger(total) || total < 1 || total > 48) return fail("Escolha entre 1 e 48 parcelas.");
 
     setBusy(true);
     const { error } = await supabase.rpc("create_transaction", {
@@ -184,10 +184,10 @@ export function TransactionDialog() {
     } as never);
     setBusy(false);
     if (error) {
-      toast.error(rpcErrorMessage(error, "Não foi possível registrar o lançamento."));
+      toast.error(rpcErrorMessage(error, "Não consegui salvar essa movimentação."));
       return;
     }
-    toast.success("Lançamento registrado.");
+    toast.success("Movimentação salva.");
     reset();
     setOpen(false);
     refresh();
@@ -197,34 +197,32 @@ export function TransactionDialog() {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button className="gap-2">
-          <Plus className="size-4" /> Novo lançamento
+          <Plus className="size-4" /> Registrar manualmente
         </Button>
       </DialogTrigger>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Novo lançamento</DialogTitle>
+          <DialogTitle>Registrar movimentação</DialogTitle>
           <DialogDescription>
-            Todo lançamento pertence a uma entidade financeira. Compra no crédito vira compra no
-            cartão (despesa na data da compra). Pagamento da fatura é só caixa e não conta de novo
-            como despesa. Transferências internas não afetam receitas e despesas.
+            Preencha só o que aconteceu. O Aurelian cuida das regras por trás para não duplicar despesas nem transferências entre suas próprias contas.
           </DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Tipo">
+          <Field label="O que aconteceu?">
             <Select value={kind} onValueChange={(v) => setKind(v as TxKind)}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="income">Entrada</SelectItem>
-                <SelectItem value="expense">Saída</SelectItem>
-                <SelectItem value="transfer">Transferência interna</SelectItem>
+                <SelectItem value="income">Dinheiro entrou</SelectItem>
+                <SelectItem value="expense">Dinheiro saiu</SelectItem>
+                <SelectItem value="transfer">Mudei dinheiro entre minhas contas</SelectItem>
               </SelectContent>
             </Select>
           </Field>
 
-          <Field label="Entidade financeira">
+          <Field label="De quem é essa movimentação?">
             <Select value={entityId} onValueChange={setEntityId}>
-              <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+              <SelectTrigger><SelectValue placeholder="Escolha" /></SelectTrigger>
               <SelectContent>
                 {data.entities.map((e) => (
                   <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>
@@ -233,17 +231,17 @@ export function TransactionDialog() {
             </Select>
           </Field>
 
-          <Field label="Descrição" className="sm:col-span-2">
-            <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Ex.: Fornecedor de insumos" />
+          <Field label="O que foi?" className="sm:col-span-2">
+            <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Ex.: compra de carne, conta de energia, comissão recebida" />
           </Field>
 
-          <Field label="Valor (R$)">
+          <Field label="Quanto?">
             <Input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" placeholder="0,00" />
           </Field>
 
-          <Field label="Categoria">
+          <Field label="Onde isso se encaixa?">
             <Select value={categoryId} onValueChange={setCategoryId} disabled={kind === "transfer"}>
-              <SelectTrigger><SelectValue placeholder={kind === "transfer" ? "Não se aplica" : "Selecione"} /></SelectTrigger>
+              <SelectTrigger><SelectValue placeholder={kind === "transfer" ? "Não precisa" : "Escolha a categoria"} /></SelectTrigger>
               <SelectContent>
                 {categories.map((c) => (
                   <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
@@ -253,9 +251,9 @@ export function TransactionDialog() {
           </Field>
 
           {isCreditPurchase ? null : (
-            <Field label="Conta de origem">
+            <Field label={kind === "income" ? "Em qual conta entrou?" : kind === "transfer" ? "De qual conta saiu?" : "De qual conta saiu?"}>
               <Select value={accountId} onValueChange={setAccountId}>
-                <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Escolha" /></SelectTrigger>
                 <SelectContent>
                   {accounts.map((a) => (
                     <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
@@ -266,9 +264,9 @@ export function TransactionDialog() {
           )}
 
           {kind === "transfer" ? (
-            <Field label="Conta de destino">
+            <Field label="Para qual conta foi?">
               <Select value={toAccountId} onValueChange={setToAccountId}>
-                <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Escolha" /></SelectTrigger>
                 <SelectContent>
                   {data.accounts
                     .filter((a) => a.id !== accountId)
@@ -279,14 +277,14 @@ export function TransactionDialog() {
               </Select>
             </Field>
           ) : (
-            <Field label="Forma de pagamento">
+            <Field label={kind === "income" ? "Como recebeu?" : "Como pagou?"}>
               <Select value={method} onValueChange={(v) => { setMethod(v); if (v !== "credit") setCardId(""); }}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="pix">Pix</SelectItem>
                   <SelectItem value="cash">Dinheiro</SelectItem>
                   <SelectItem value="debit">Débito</SelectItem>
-                  {kind === "expense" ? <SelectItem value="credit">Crédito</SelectItem> : null}
+                  {kind === "expense" ? <SelectItem value="credit">Cartão de crédito</SelectItem> : null}
                   <SelectItem value="boleto">Boleto</SelectItem>
                   <SelectItem value="transfer">Transferência</SelectItem>
                   <SelectItem value="other">Outro</SelectItem>
@@ -296,9 +294,9 @@ export function TransactionDialog() {
           )}
 
           {isCreditPurchase ? (
-            <Field label="Cartão" className="sm:col-span-2">
+            <Field label="Qual cartão?" className="sm:col-span-2">
               <Select value={cardId} onValueChange={setCardId}>
-                <SelectTrigger><SelectValue placeholder="Cartão ativo desta entidade" /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Escolha o cartão" /></SelectTrigger>
                 <SelectContent>
                   {cards.map((c) => (
                     <SelectItem key={c.id} value={c.id}>{c.name}{c.brand ? ` · ${c.brand}` : ""}</SelectItem>
@@ -308,57 +306,57 @@ export function TransactionDialog() {
             </Field>
           ) : null}
 
-          <Field label={isCreditPurchase ? "Data da compra" : "Competência"}>
+          <Field label={isCreditPurchase ? "Quando comprou?" : "Quando aconteceu?"}>
             <Input type="date" value={competence} onChange={(e) => setCompetence(e.target.value)} />
           </Field>
           {isCreditPurchase ? null : (
-            <Field label="Vencimento">
+            <Field label="Quando vence?">
               <Input type="date" value={due} onChange={(e) => setDue(e.target.value)} />
             </Field>
           )}
 
           {isCreditPurchase || recurrence !== "none" ? null : (
-            <Field label="Status">
+            <Field label={kind === "income" ? "Já recebeu?" : kind === "expense" ? "Já pagou?" : "Situação"}>
               <Select value={status} onValueChange={setStatus}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="paid">Liquidado</SelectItem>
-                  <SelectItem value="pending">Pendente</SelectItem>
-                  <SelectItem value="overdue">Vencido</SelectItem>
+                  <SelectItem value="paid">Sim, já aconteceu</SelectItem>
+                  <SelectItem value="pending">Ainda não</SelectItem>
+                  <SelectItem value="overdue">Está atrasado</SelectItem>
                 </SelectContent>
               </Select>
             </Field>
           )}
 
           {isCreditPurchase || kind === "transfer" ? null : (
-            <Field label="Recorrência">
+            <Field label="Isso se repete?">
               <Select value={recurrence} onValueChange={setRecurrence}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">Nenhuma</SelectItem>
-                  <SelectItem value="monthly">Mensal</SelectItem>
-                  <SelectItem value="weekly">Semanal</SelectItem>
-                  <SelectItem value="yearly">Anual</SelectItem>
+                  <SelectItem value="none">Não</SelectItem>
+                  <SelectItem value="monthly">Todo mês</SelectItem>
+                  <SelectItem value="weekly">Toda semana</SelectItem>
+                  <SelectItem value="yearly">Todo ano</SelectItem>
                 </SelectContent>
               </Select>
             </Field>
           )}
 
           {isCreditPurchase || recurrence !== "none" ? null : (
-            <Field label="Parcelas">
+            <Field label="Foi parcelado? Quantas vezes?">
               <Input type="number" min={1} max={48} value={installments} onChange={(e) => setInstallments(e.target.value)} />
             </Field>
           )}
 
-          <Field label="Observações" className="sm:col-span-2">
-            <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
+          <Field label="Quer deixar alguma observação?" className="sm:col-span-2">
+            <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Opcional" />
           </Field>
         </div>
 
         <DialogFooter>
           <Button variant="ghost" onClick={() => setOpen(false)}>Cancelar</Button>
           <Button onClick={submit} disabled={busy || !canWrite}>
-            {isCreditPurchase ? "Registrar compra no cartão" : recurrence !== "none" ? "Criar recorrência" : "Salvar lançamento"}
+            {isCreditPurchase ? "Salvar compra" : recurrence !== "none" ? "Salvar compromisso" : "Salvar movimentação"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -377,7 +375,7 @@ function Field({
 }) {
   return (
     <div className={className}>
-      <Label className="mb-1.5 block text-xs uppercase tracking-wider text-muted-foreground">
+      <Label className="mb-1.5 block text-xs font-medium text-muted-foreground">
         {label}
       </Label>
       {children}
