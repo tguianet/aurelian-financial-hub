@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { AlertTriangle, ArrowLeft, Building2, ShieldCheck, Siren, TrendingUp } from "lucide-react";
 import { useEntityScope } from "@/components/finance/EntityContext";
 import { PageHeader } from "@/components/finance/PageHeader";
+import { AdvisorAiPanel } from "@/components/finance/AdvisorAiPanel";
 import { brl, today } from "@/lib/finance";
 import { advisorAlerts, advisorHealth, categoryMovements, entityRiskRows } from "@/lib/finance-advisor";
 
@@ -46,23 +47,27 @@ function ConsultorRiscos() {
         </div>
       </section>
 
-      <section className="panel mt-4 p-4 sm:p-5">
-        <div className="mb-4 flex items-center gap-2"><Siren className="size-4 text-primary" /><h2 className="text-sm font-semibold">Alertas acionáveis</h2></div>
-        <div className="grid gap-3 md:grid-cols-2">
-          {alerts.map((alert) => (
-            <article key={alert.id} className={`rounded-xl border p-4 ${alert.severity === "critical" ? "border-destructive/35 bg-destructive/5" : alert.severity === "warning" ? "border-amber-500/30 bg-amber-500/5" : alert.severity === "positive" ? "border-emerald-500/30 bg-emerald-500/5" : "border-primary/20 bg-primary/5"}`}>
-              <div className="flex items-start gap-3">
-                <AlertTriangle className={`mt-0.5 size-4 shrink-0 ${alert.severity === "critical" ? "text-destructive" : "text-primary"}`} />
-                <div>
-                  <h3 className="text-sm font-medium">{alert.title}</h3>
-                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{alert.body}</p>
-                  <p className="mt-2 text-xs font-medium text-foreground">Ação: {alert.action}</p>
+      <div className="mt-4 grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
+        <section className="panel p-4 sm:p-5">
+          <div className="mb-4 flex items-center gap-2"><Siren className="size-4 text-primary" /><h2 className="text-sm font-semibold">Alertas acionáveis</h2></div>
+          <div className="grid gap-3">
+            {alerts.map((alert) => (
+              <article key={alert.id} className={`rounded-xl border p-4 ${alert.severity === "critical" ? "border-destructive/35 bg-destructive/5" : alert.severity === "warning" ? "border-amber-500/30 bg-amber-500/5" : alert.severity === "positive" ? "border-emerald-500/30 bg-emerald-500/5" : "border-primary/20 bg-primary/5"}`}>
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className={`mt-0.5 size-4 shrink-0 ${alert.severity === "critical" ? "text-destructive" : "text-primary"}`} />
+                  <div>
+                    <h3 className="text-sm font-medium">{alert.title}</h3>
+                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{alert.body}</p>
+                    <p className="mt-2 text-xs font-medium text-foreground">Ação: {alert.action}</p>
+                  </div>
                 </div>
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <AdvisorAiPanel data={data} entityId={entityId} entityName={entityName} />
+      </div>
 
       <div className="mt-4 grid gap-4 xl:grid-cols-2">
         <section className="panel p-4 sm:p-5">
