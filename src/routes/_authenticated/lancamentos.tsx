@@ -28,14 +28,13 @@ import {
 export const Route = createFileRoute("/_authenticated/lancamentos")({
   head: () => ({
     meta: [
-      { title: "Lançamentos — Aurelian Finance" },
+      { title: "Movimentações — Aurelian Finance" },
       {
         name: "description",
-        content:
-          "Registre entradas, saídas e transferências internas com categoria, conta, vencimento, status, recorrência e parcelamento.",
+        content: "Veja tudo o que entrou, saiu ou foi transferido entre suas contas.",
       },
-      { property: "og:title", content: "Lançamentos — Aurelian Finance" },
-      { property: "og:description", content: "Ledger completo de entradas, saídas e transferências." },
+      { property: "og:title", content: "Movimentações — Aurelian Finance" },
+      { property: "og:description", content: "Tudo o que movimentou seu dinheiro em um só lugar." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
@@ -76,18 +75,18 @@ function Lancamentos() {
     }
     const { error } = await supabase.rpc("cancel_transaction", { p_id: t.id });
     if (error) {
-      toast.error(rpcErrorMessage(error, "Não foi possível cancelar o lançamento."));
+      toast.error(rpcErrorMessage(error, "Não foi possível cancelar essa movimentação."));
       return;
     }
-    toast.success("Lançamento cancelado (mantido na trilha de auditoria).");
+    toast.success("Movimentação cancelada. O histórico foi mantido para sua segurança.");
     refresh();
   };
 
   return (
     <div>
       <PageHeader
-        title="Lançamentos"
-        subtitle={`${entityName} · ${rows.length} registros`}
+        title="Movimentações"
+        subtitle={`${entityName} · ${rows.length} registros encontrados`}
         action={<TransactionDialog />}
       />
       <DemoNotice />
@@ -96,26 +95,26 @@ function Lancamentos() {
         <Input
           value={term}
           onChange={(e) => setTerm(e.target.value)}
-          placeholder="Buscar descrição…"
+          placeholder="Buscar por nome ou descrição…"
           className="w-full sm:w-64"
         />
         <Select value={kindFilter} onValueChange={setKindFilter}>
           <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Todos os tipos</SelectItem>
-            <SelectItem value="income">Entradas</SelectItem>
-            <SelectItem value="expense">Saídas</SelectItem>
-            <SelectItem value="transfer">Transferências</SelectItem>
+            <SelectItem value="all">Tudo</SelectItem>
+            <SelectItem value="income">Dinheiro que entrou</SelectItem>
+            <SelectItem value="expense">Dinheiro que saiu</SelectItem>
+            <SelectItem value="transfer">Entre minhas contas</SelectItem>
           </SelectContent>
         </Select>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Todos os status</SelectItem>
-            <SelectItem value="paid">Pago</SelectItem>
-            <SelectItem value="received">Recebido</SelectItem>
-            <SelectItem value="pending">Pendente</SelectItem>
-            <SelectItem value="overdue">Vencido</SelectItem>
+            <SelectItem value="all">Qualquer situação</SelectItem>
+            <SelectItem value="paid">Já pago</SelectItem>
+            <SelectItem value="received">Já recebido</SelectItem>
+            <SelectItem value="pending">Ainda pendente</SelectItem>
+            <SelectItem value="overdue">Atrasado</SelectItem>
             <SelectItem value="cancelled">Cancelado</SelectItem>
           </SelectContent>
         </Select>
@@ -125,13 +124,13 @@ function Lancamentos() {
         <table className="w-full min-w-[900px] text-sm">
           <thead>
             <tr className="border-b border-border text-left text-[11px] uppercase tracking-wider text-muted-foreground">
-              <Th>Descrição</Th>
-              <Th>Entidade</Th>
+              <Th>O que foi</Th>
+              <Th>De onde</Th>
               <Th>Categoria</Th>
               <Th>Conta</Th>
-              <Th>Pgto.</Th>
-              <Th>Vencimento</Th>
-              <Th>Status</Th>
+              <Th>Como pagou</Th>
+              <Th>Data limite</Th>
+              <Th>Situação</Th>
               <Th className="text-right">Valor</Th>
               <Th />
             </tr>
@@ -158,7 +157,7 @@ function Lancamentos() {
                     </span>
                   </Td>
                   <Td>{entity?.name ?? "—"}</Td>
-                  <Td>{category?.name ?? (t.kind === "transfer" ? "Interna" : "—")}</Td>
+                  <Td>{category?.name ?? (t.kind === "transfer" ? "Entre contas" : "—")}</Td>
                   <Td>
                     {account?.name ?? "—"}
                     {toAccount ? ` → ${toAccount.name}` : ""}
@@ -183,7 +182,7 @@ function Lancamentos() {
                   </Td>
                   <Td className="text-right">
                     {t.status !== "cancelled" && !t.is_demo && !isCardCashMovement(t) && canWrite ? (
-                      <Button variant="ghost" size="icon" onClick={() => cancel(t)} title="Cancelar">
+                      <Button variant="ghost" size="icon" onClick={() => cancel(t)} title="Cancelar movimentação">
                         <Ban className="size-4" />
                       </Button>
                     ) : null}
@@ -194,7 +193,7 @@ function Lancamentos() {
             {rows.length === 0 ? (
               <tr>
                 <td colSpan={9} className="p-8 text-center text-sm text-muted-foreground">
-                  Nenhum lançamento com esses filtros.
+                  Não encontrei nenhuma movimentação com esses filtros.
                 </td>
               </tr>
             ) : null}
