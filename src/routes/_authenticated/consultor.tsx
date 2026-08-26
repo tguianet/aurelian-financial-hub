@@ -61,7 +61,7 @@ function monthKey(date: Date) {
 }
 
 function previousMonthKey(value: string) {
-  const [year, month] = value.split("-").map(Number);
+  const [year = 1970, month = 1] = value.split("-").map(Number);
   return monthKey(new Date(year, month - 2, 1));
 }
 
@@ -164,11 +164,12 @@ function AurelianAdvisor() {
         to: "/pendencias",
       });
     }
-    if (anomalies.length > 0) {
+    const topAnomaly = anomalies[0];
+    if (topAnomaly) {
       list.push({
-        title: anomalies[0].title,
-        body: anomalies[0].body,
-        tone: anomalies[0].severity === "critical" ? "critical" : "warning",
+        title: topAnomaly.title,
+        body: topAnomaly.body,
+        tone: topAnomaly.severity === "critical" ? "critical" : "warning",
         to: "/revisar",
       });
     }

@@ -616,7 +616,7 @@ export function MobileQuickEntry({ documents = [] }: Props) {
                 <span className="block text-[11px] text-muted-foreground">Organizar em</span>
                 <Select value={draft.categoryId ?? ""} onValueChange={(value) => setDraft({ ...draft, categoryId: value })}>
                   <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Escolha a categoria" /></SelectTrigger>
-                  <SelectContent>{selectableCategories(data.categories, draft.kind).map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}</SelectContent>
+                  <SelectContent>{selectableCategories(data.categories, draft.kind === "transfer" ? undefined : draft.kind).map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
             ) : null}

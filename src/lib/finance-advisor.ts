@@ -30,7 +30,7 @@ function monthKeyFromDate(date: Date) {
 }
 
 function previousMonthKey(monthKey: string) {
-  const [year, month] = monthKey.split("-").map(Number);
+  const [year = 1970, month = 1] = monthKey.split("-").map(Number);
   return monthKeyFromDate(new Date(year, month - 2, 1));
 }
 
