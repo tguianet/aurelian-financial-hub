@@ -70,7 +70,7 @@ function Brand() {
   );
 }
 
-function NavItem({ to, label, icon: Icon, onNavigate, badge }: { to: string; label: string; icon: typeof LayoutDashboard; onNavigate?: () => void; badge?: number }) {
+function NavItem({ to, label, icon: Icon, onNavigate, badge }: { to: string; label: string; icon: typeof LayoutDashboard; onNavigate?: (() => void) | undefined; badge?: number | undefined }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const active = pathname === to;
   return (

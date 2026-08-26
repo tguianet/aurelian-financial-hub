@@ -86,7 +86,7 @@ export function TransactionDialog() {
   };
 
   const submit = async () => {
-    const fail = (m: string) => toast.error(m);
+    const fail = (m: string): void => { toast.error(m); };
     if (!user) return fail("Sua sessão expirou. Entre novamente.");
     if (!canWrite) return fail("Seu acesso permite apenas visualizar.");
     if (!entityId) return fail("Escolha de quem é essa movimentação.");
