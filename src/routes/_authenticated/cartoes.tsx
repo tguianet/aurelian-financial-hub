@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { createFileRouteHead } from "@/lib/head";
 import { useEntityScope } from "@/components/finance/EntityContext";
 import { PageHeader } from "@/components/finance/PageHeader";
@@ -13,8 +13,8 @@ import { brl, buildScope, cardBill, fmtDate, monthDueDate, pct, today } from "@/
 export const Route = createFileRoute("/_authenticated/cartoes")({
   head: () =>
     createFileRouteHead(
-      "Cartões de crédito — Aurelian Finance",
-      "Limite, fatura atual, vencimento e compras parceladas de cada cartão por entidade.",
+      "Meus cartões — Aurelian Finance",
+      "Veja quanto já usou, quanto ainda tem disponível e as próximas faturas.",
     ),
   component: Cartoes,
 });
@@ -30,13 +30,10 @@ function Cartoes() {
 
   return (
     <div>
-      <PageHeader title="Cartões de crédito" subtitle={entityName} action={<CreditCardActions />} />
+      <PageHeader title="Meus cartões" subtitle={`${entityName} · acompanhe faturas e limite`} action={<CreditCardActions />} />
 
       <div className="mb-4 rounded-lg border border-border bg-surface/60 px-4 py-3 text-xs text-muted-foreground">
-        A compra no cartão é a despesa (competência na data da compra). Pagar parcela ou fatura debita a conta bancária e
-        não entra de novo no resultado nem em{" "}
-        <Link to="/pendencias" className="font-medium text-primary underline-offset-2 hover:underline">contas a pagar</Link>.
-        Parcelas em aberto continuam na projeção até serem pagas.
+        O Aurelian já conta a compra quando ela acontece. Quando você paga a fatura, ele apenas desconta o dinheiro da conta — sem contar a despesa duas vezes.
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
@@ -52,38 +49,38 @@ function Cartoes() {
                 <div>
                   <p className="text-sm font-medium">{c.name}</p>
                   <p className="text-[11px] text-muted-foreground">
-                    {[c.brand, entity?.name].filter(Boolean).join(" · ") || "Sem bandeira"}
+                    {[c.brand, entity?.name].filter(Boolean).join(" · ") || "Cartão"}
                   </p>
                 </div>
                 <span className="rounded-md border border-border px-2 py-1 text-[10px] text-muted-foreground">
-                  {c.active ? "Ativo" : "Inativo"}
+                  {c.active ? "Em uso" : "Desativado"}
                 </span>
               </div>
 
               <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
                 <div>
-                  <p className="text-[11px] text-muted-foreground">Limite</p>
+                  <p className="text-[11px] text-muted-foreground">Limite total</p>
                   <p className="num font-medium">{brl(Number(c.credit_limit))}</p>
                 </div>
                 <div>
-                  <p className="text-[11px] text-muted-foreground">Disponível</p>
+                  <p className="text-[11px] text-muted-foreground">Ainda posso usar</p>
                   <p className="num font-medium">{brl(available)}</p>
                 </div>
                 <div>
-                  <p className="text-[11px] text-muted-foreground">Fatura atual</p>
+                  <p className="text-[11px] text-muted-foreground">Fatura deste mês</p>
                   <p className="num text-lg font-semibold text-destructive">{brl(bill.current)}</p>
                 </div>
                 <div>
-                  <p className="text-[11px] text-muted-foreground">Vencimento</p>
+                  <p className="text-[11px] text-muted-foreground">Vence em</p>
                   <p className="font-medium">{fmtDate(monthDueDate(ref, c.due_day))}</p>
                 </div>
                 <div>
-                  <p className="text-[11px] text-muted-foreground">Próxima fatura</p>
+                  <p className="text-[11px] text-muted-foreground">Próximo mês</p>
                   <p className="num font-medium">{brl(bill.next)}</p>
                   <p className="text-[10px] text-muted-foreground">{fmtDate(monthDueDate(nextRef, c.due_day))}</p>
                 </div>
                 <div>
-                  <p className="text-[11px] text-muted-foreground">Parcelas futuras</p>
+                  <p className="text-[11px] text-muted-foreground">Compras que continuam depois</p>
                   <p className="num font-medium">{brl(bill.future)}</p>
                   <p className="text-[10px] text-muted-foreground">{bill.futureCount} parcela(s)</p>
                 </div>
@@ -91,19 +88,19 @@ function Cartoes() {
 
               <div className="mt-4 space-y-1.5">
                 <div className="flex justify-between text-[11px] text-muted-foreground">
-                  <span>Em aberto: {brl(bill.open)}</span>
+                  <span>Total comprometido: {brl(bill.open)}</span>
                   <span>{pct(usage)} do limite</span>
                 </div>
                 <Progress value={Math.min(usage * 100, 100)} className="h-1.5" />
                 <p className="text-[11px] text-muted-foreground">
-                  Fecha dia {c.closing_day}{account ? ` · paga por ${account.name}` : ""}
+                  Fecha dia {c.closing_day}{account ? ` · pago pela conta ${account.name}` : ""}
                 </p>
               </div>
 
               <div className="mt-4 flex flex-wrap gap-2">
                 {canWrite ? (
                   <NewPurchaseDialog defaultCardId={c.id}>
-                    <Button size="sm">Nova compra</Button>
+                    <Button size="sm">Registrar compra</Button>
                   </NewPurchaseDialog>
                 ) : null}
                 {canWrite ? <PayBillDialog card={c} /> : null}
@@ -114,24 +111,24 @@ function Cartoes() {
         })}
         {cards.length === 0 ? (
           <div className="panel p-5 text-sm text-muted-foreground">
-            Nenhum cartão cadastrado nesta visão.
-            {canWrite ? <> Use <strong className="text-foreground">Novo cartão</strong> para começar.</> : null}
+            Nenhum cartão aqui ainda.
+            {canWrite ? <> Use <strong className="text-foreground">Novo cartão</strong> para adicionar o primeiro.</> : null}
           </div>
         ) : null}
       </div>
 
-      <h2 className="mb-3 mt-8 text-sm font-semibold">Compras parceladas</h2>
+      <h2 className="mb-3 mt-8 text-sm font-semibold">Compras parceladas que ainda estão rolando</h2>
       <div className="panel overflow-x-auto">
         <table className="w-full min-w-[820px] text-sm">
           <thead>
             <tr className="border-b border-border text-left text-[11px] uppercase tracking-wider text-muted-foreground">
               <Th>Compra</Th>
               <Th>Cartão</Th>
-              <Th>Data</Th>
-              <Th className="text-right">Total</Th>
-              <Th className="text-right">Parcelas</Th>
-              <Th>Próxima parcela</Th>
-              <Th className="text-right">Em aberto</Th>
+              <Th>Quando comprou</Th>
+              <Th className="text-right">Valor total</Th>
+              <Th className="text-right">Andamento</Th>
+              <Th>Próximo pagamento</Th>
+              <Th className="text-right">Ainda falta</Th>
             </tr>
           </thead>
           <tbody>
@@ -151,7 +148,7 @@ function Cartoes() {
                     {next ? (
                       <span className="flex items-center gap-2">{fmtDate(next.due_date)} <StatusPill status={next.status} dueDate={next.due_date} /></span>
                     ) : (
-                      "Quitada"
+                      "Tudo pago"
                     )}
                   </Td>
                   <Td className="num text-right text-destructive">{brl(open.reduce((s, i) => s + Number(i.amount), 0))}</Td>
@@ -160,7 +157,7 @@ function Cartoes() {
             })}
             {purchases.length === 0 ? (
               <tr>
-                <td colSpan={7} className="p-8 text-center text-sm text-muted-foreground">Nenhuma compra parcelada.</td>
+                <td colSpan={7} className="p-8 text-center text-sm text-muted-foreground">Nenhuma compra parcelada por aqui.</td>
               </tr>
             ) : null}
           </tbody>
