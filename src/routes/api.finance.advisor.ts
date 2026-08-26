@@ -9,12 +9,16 @@ type AdvisorContext = {
   entities?: Array<Record<string, string | number>>;
   categories?: Array<Record<string, string | number | null>>;
   alerts?: Array<Record<string, string>>;
+  dueSoon?: Array<Record<string, string | number>>;
   health?: { score?: number; label?: string; reasons?: string[] };
 };
+
+type AdvisorHistoryItem = { role?: "user" | "assistant"; text?: string };
 
 type AdvisorBody = {
   question?: string;
   context?: AdvisorContext;
+  history?: AdvisorHistoryItem[];
 };
 
 function envValue(key: string) {
@@ -56,12 +60,21 @@ function sanitizeContext(context: AdvisorContext | undefined) {
     },
     period: String(context.period ?? "").slice(0, 10),
     kpis: context.kpis ?? {},
-    projections: Array.isArray(context.projections) ? context.projections.slice(0, 4) : [],
+    projections: Array.isArray(context.projections) ? context.projections.slice(0, 5) : [],
     entities: Array.isArray(context.entities) ? context.entities.slice(0, 20) : [],
     categories: Array.isArray(context.categories) ? context.categories.slice(0, 15) : [],
     alerts: Array.isArray(context.alerts) ? context.alerts.slice(0, 8) : [],
+    dueSoon: Array.isArray(context.dueSoon) ? context.dueSoon.slice(0, 12) : [],
     health: context.health ?? {},
   };
+}
+
+function sanitizeHistory(history: AdvisorHistoryItem[] | undefined) {
+  if (!Array.isArray(history)) return [];
+  return history
+    .filter((item) => item && (item.role === "user" || item.role === "assistant") && typeof item.text === "string")
+    .slice(-6)
+    .map((item) => ({ role: item.role, text: String(item.text).slice(0, 700) }));
 }
 
 export const Route = createFileRoute("/api/finance/advisor")({
@@ -88,6 +101,7 @@ export const Route = createFileRoute("/api/finance/advisor")({
         if (!context) {
           return Response.json({ message: "Contexto financeiro ausente." }, { status: 400 });
         }
+        const history = sanitizeHistory(body.history);
 
         const apiKey = envValue("OPENAI_API_KEY");
         if (!apiKey) {
@@ -107,14 +121,14 @@ export const Route = createFileRoute("/api/finance/advisor")({
               {
                 role: "system",
                 content:
-                  "Voce e o Consultor Financeiro do Aurelian Finance. Responda em portugues do Brasil, de forma objetiva e executiva. Use SOMENTE os numeros e nomes presentes no contexto JSON fornecido. Nunca invente valor, empresa, categoria, data, margem ou previsao. Se o contexto nao trouxer dados suficientes, diga claramente que nao ha base suficiente. Nao sugira executar SQL, nao peca acesso ao banco e nao crie lancamentos. Diferencie fato calculado de recomendacao. Recomendacoes devem ser prudentes, acionaveis e baseadas nos alertas e indicadores fornecidos. Nao exponha IDs internos. Valores monetarios devem ser apresentados em reais quando fizer sentido.",
+                  "Voce e o Consultor Financeiro do Aurelian Finance. Responda em portugues do Brasil, de forma objetiva e executiva. Use SOMENTE os numeros, nomes e datas presentes no contexto JSON e no historico controlado fornecido. Nunca invente valor, empresa, categoria, data, margem ou previsao. Se o contexto nao trouxer dados suficientes, diga claramente que nao ha base suficiente. Nao sugira executar SQL, nao peca acesso ao banco e nao crie lancamentos. Diferencie fato calculado de recomendacao. Recomendacoes devem ser prudentes, acionaveis e baseadas nos alertas e indicadores fornecidos. Para vencimentos, use dueSoon quando disponivel. Nao exponha IDs internos. Valores monetarios devem ser apresentados em reais quando fizer sentido.",
               },
               {
                 role: "user",
-                content: `Pergunta: ${question}\n\nContexto financeiro controlado:\n${JSON.stringify(context)}`,
+                content: `Historico recente controlado:\n${JSON.stringify(history)}\n\nPergunta atual: ${question}\n\nContexto financeiro controlado:\n${JSON.stringify(context)}`,
               },
             ],
-            max_output_tokens: 420,
+            max_output_tokens: 520,
           }),
         });
 
