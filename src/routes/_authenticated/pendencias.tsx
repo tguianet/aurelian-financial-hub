@@ -21,8 +21,8 @@ import { rpcErrorMessage } from "@/lib/rpc-error";
 export const Route = createFileRoute("/_authenticated/pendencias")({
   head: () =>
     createFileRouteHead(
-      "Contas a pagar e receber — Aurelian Finance",
-      "Pendências, vencimentos e liquidações com status pendente, pago, recebido, vencido e cancelado.",
+      "O que falta pagar e receber — Aurelian Finance",
+      "Veja o dinheiro que ainda vai sair e o que ainda vai entrar.",
     ),
   component: Pendencias,
 });
@@ -47,7 +47,7 @@ function Pendencias() {
       return;
     }
     if (!canWrite) {
-      toast.error("Seu acesso é somente leitura.");
+      toast.error("Seu acesso permite apenas visualizar.");
       return;
     }
     const { error } = await supabase.rpc("settle_transaction", {
@@ -55,7 +55,7 @@ function Pendencias() {
       p_paid_at: localDateIso(),
     });
     if (error) {
-      toast.error(rpcErrorMessage(error, "Não foi possível liquidar o lançamento."));
+      toast.error(rpcErrorMessage(error, t.kind === "income" ? "Não consegui confirmar esse recebimento." : "Não consegui confirmar esse pagamento."));
       return;
     }
     toast.success(t.kind === "income" ? "Recebimento confirmado." : "Pagamento confirmado.");
@@ -67,28 +67,26 @@ function Pendencias() {
   return (
     <div>
       <PageHeader
-        title="Contas a pagar e receber"
-        subtitle={entityName}
+        title="O que falta pagar e receber"
+        subtitle={`${entityName} · acompanhe o que ainda está aberto`}
         action={<TransactionDialog />}
       />
 
       <div className="mb-4 rounded-lg border border-border bg-surface/60 px-4 py-3 text-xs text-muted-foreground">
-        Para criar uma conta futura, use <strong className="text-foreground">Novo lançamento</strong> e deixe o status como Pendente ou Vencido. Entradas viram contas a receber; saídas viram contas a pagar.
-        Faturas de cartão não aparecem aqui: pague-as em{" "}
-        <Link to="/cartoes" className="font-medium text-primary underline-offset-2 hover:underline">Cartões</Link>
-        {" "}para não lançar a despesa duas vezes.
+        Quando algo ainda não foi pago ou recebido, ele aparece aqui. Cartões são tratados separadamente para evitar contar a mesma despesa duas vezes. Veja as faturas em{" "}
+        <Link to="/cartoes" className="font-medium text-primary underline-offset-2 hover:underline">Cartões</Link>.
       </div>
 
       <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label="Total a pagar" value={brl(sum(payables))} tone="negative" />
+        <KpiCard label="Ainda preciso pagar" value={brl(sum(payables))} tone="negative" />
         <KpiCard
-          label="Vencido a pagar"
+          label="Pagamentos atrasados"
           value={brl(sum(payables.filter((t) => displayOpenStatus(t.status, t.due_date ?? t.competence_date) === "overdue")))}
           tone="negative"
         />
-        <KpiCard label="Total a receber" value={brl(sum(receivables))} tone="positive" />
+        <KpiCard label="Ainda vou receber" value={brl(sum(receivables))} tone="positive" />
         <KpiCard
-          label="Vencido a receber"
+          label="Recebimentos atrasados"
           value={brl(sum(receivables.filter((t) => displayOpenStatus(t.status, t.due_date ?? t.competence_date) === "overdue")))}
           tone="negative"
         />
@@ -96,8 +94,8 @@ function Pendencias() {
 
       <Tabs value={tab} onValueChange={setTab} className="mb-4">
         <TabsList>
-          <TabsTrigger value="payables">A pagar ({payables.length})</TabsTrigger>
-          <TabsTrigger value="receivables">A receber ({receivables.length})</TabsTrigger>
+          <TabsTrigger value="payables">Preciso pagar ({payables.length})</TabsTrigger>
+          <TabsTrigger value="receivables">Vou receber ({receivables.length})</TabsTrigger>
         </TabsList>
       </Tabs>
 
@@ -105,11 +103,11 @@ function Pendencias() {
         <table className="w-full min-w-[820px] text-sm">
           <thead>
             <tr className="border-b border-border text-left text-[11px] uppercase tracking-wider text-muted-foreground">
-              <Th>Descrição</Th>
-              <Th>Entidade</Th>
+              <Th>O que é</Th>
+              <Th>De quem</Th>
               <Th>Categoria</Th>
-              <Th>Vencimento</Th>
-              <Th>Status</Th>
+              <Th>Quando</Th>
+              <Th>Situação</Th>
               <Th className="text-right">Valor</Th>
               <Th />
             </tr>
@@ -132,7 +130,7 @@ function Pendencias() {
                   <Td className="text-right">
                     {!t.is_demo && canWrite ? (
                       <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => settle(t)}>
-                        <Check className="size-3.5" /> Liquidar
+                        <Check className="size-3.5" /> {t.kind === "income" ? "Recebi" : "Paguei"}
                       </Button>
                     ) : null}
                   </Td>
@@ -140,7 +138,9 @@ function Pendencias() {
               ))}
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={7} className="p-8 text-center text-sm text-muted-foreground">Nenhuma pendência.</td>
+                <td colSpan={7} className="p-8 text-center text-sm text-muted-foreground">
+                  {tab === "payables" ? "Nada para pagar por aqui." : "Nada para receber por aqui."}
+                </td>
               </tr>
             ) : null}
           </tbody>
