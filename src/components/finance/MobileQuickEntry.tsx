@@ -24,12 +24,15 @@ import {
   type ResolvedDocumentSuggestion,
 } from "@/lib/document-interpretation";
 
+type PaymentMethod = "pix" | "cash" | "debit" | "credit" | "boleto" | "transfer" | "other";
+
 type Draft = {
   kind: Exclude<TxKind, "transfer">;
   amount: number;
   entityId: string | null;
   categoryId: string | null;
   accountId: string | null;
+  paymentMethod: PaymentMethod;
   description: string;
   originalText: string;
   parser: "local" | "openai";
@@ -112,6 +115,27 @@ function inferPending(text: string, kind: Draft["kind"]) {
   return /(para pagar|a pagar|vou pagar|ainda vou pagar|nao paguei)/.test(n);
 }
 
+function inferPaymentMethod(text: string): PaymentMethod {
+  const n = normalize(text);
+  if (/\bpix\b/.test(n)) return "pix";
+  if (/cartao de credito|credito|no credito/.test(n)) return "credit";
+  if (/cartao de debito|debito|no debito/.test(n)) return "debit";
+  if (/\bboleto\b/.test(n)) return "boleto";
+  if (/transferencia|transferi|ted|doc bancario/.test(n)) return "transfer";
+  if (/dinheiro|especie|em especie/.test(n)) return "cash";
+  return "other";
+}
+
+function paymentMethodLabel(method: PaymentMethod) {
+  if (method === "pix") return "Pix";
+  if (method === "cash") return "Dinheiro";
+  if (method === "debit") return "Débito";
+  if (method === "credit") return "Cartão de crédito";
+  if (method === "boleto") return "Boleto";
+  if (method === "transfer") return "Transferência";
+  return "Outro";
+}
+
 function removeEntityMention(text: string, entityName?: string) {
   if (!entityName) return normalize(text);
   return normalize(text).replaceAll(normalize(entityName), " ").replace(/\s+/g, " ").trim();
@@ -148,14 +172,27 @@ export function MobileQuickEntry({ documents = [] }: Props) {
       categoryHint: categoryHint ?? originalText,
     });
 
-  const accountForEntity = (entityId: string | null, preferredAccountId?: string | null) => {
+  const accountForEntity = (entityId: string | null, preferredAccountId?: string | null, originalText?: string) => {
     if (!entityId) return null;
+    const entityAccounts = data.accounts.filter((account) => account.entity_id === entityId);
+    if (originalText) {
+      const normalizedText = normalize(originalText);
+      const mentioned = entityAccounts
+        .filter((account) => account.active)
+        .sort((a, b) => Math.max(b.name.length, b.bank?.length ?? 0) - Math.max(a.name.length, a.bank?.length ?? 0))
+        .find((account) => {
+          const name = normalize(account.name);
+          const bank = normalize(account.bank ?? "");
+          return (name.length >= 3 && normalizedText.includes(name)) || (bank.length >= 3 && normalizedText.includes(bank));
+        });
+      if (mentioned) return mentioned.id;
+    }
     const preferred = preferredAccountId
-      ? data.accounts.find((account) => account.id === preferredAccountId && account.entity_id === entityId && account.active)
+      ? entityAccounts.find((account) => account.id === preferredAccountId && account.active)
       : undefined;
     const next = preferred
-      ?? data.accounts.find((account) => account.entity_id === entityId && account.active)
-      ?? data.accounts.find((account) => account.entity_id === entityId);
+      ?? entityAccounts.find((account) => account.active)
+      ?? entityAccounts[0];
     return next?.id ?? null;
   };
 
@@ -203,7 +240,8 @@ export function MobileQuickEntry({ documents = [] }: Props) {
         amount: roundMoney(Number(ai.amount)),
         entityId: resolved.entityId,
         categoryId: resolved.categoryId,
-        accountId: accountForEntity(resolved.entityId, ai.account_id),
+        accountId: accountForEntity(resolved.entityId, ai.account_id, originalText),
+        paymentMethod: inferPaymentMethod(originalText),
         description: ai.description?.trim() || ai.vendor?.trim() || originalText || "Documento financeiro",
         originalText,
         parser: "openai",
@@ -224,7 +262,7 @@ export function MobileQuickEntry({ documents = [] }: Props) {
 
     let stripped = originalText;
     if (installment) stripped = stripped.replace(installment.matchedText, "");
-    stripped = stripped.replace(/\b(parcelei|financiei|comprei|gastei|paguei|recebi|entrou|vendi|ganhei|faturei|reais|real|r\$|em|de|da|do)\b/gi, " ")
+    stripped = stripped.replace(/\b(parcelei|financiei|comprei|gastei|paguei|recebi|entrou|vendi|ganhei|faturei|reais|real|r\$|pix|boleto|debito|credito|dinheiro|transferencia|em|de|da|do)\b/gi, " ")
       .replace(/\d[\d.,]*/g, " ").replace(/\s+/g, " ").trim();
     if (entity?.name) stripped = removeEntityMention(stripped, entity.name);
 
@@ -233,7 +271,8 @@ export function MobileQuickEntry({ documents = [] }: Props) {
       amount,
       entityId: resolved.entityId,
       categoryId: resolved.categoryId,
-      accountId: accountForEntity(resolved.entityId),
+      accountId: accountForEntity(resolved.entityId, null, originalText),
+      paymentMethod: inferPaymentMethod(originalText),
       description: stripped || resolved.originalHint || (kind === "income" ? "Entrada rápida" : "Saída rápida"),
       originalText,
       parser: "local",
@@ -269,7 +308,11 @@ export function MobileQuickEntry({ documents = [] }: Props) {
   const documentInterpret = async (originalText: string) => {
     const { data: sessionData } = await supabase.auth.getSession();
     const token = sessionData.session?.access_token;
-    const document = documents.find((item) => item.id);
+    const readyDocuments = documents.filter((item) => item.id);
+    if (readyDocuments.length > 1) {
+      throw new Error("Para evitar lançar o documento errado, deixe apenas um anexo no lançamento rápido.");
+    }
+    const document = readyDocuments[0];
     if (!token || !document?.id) {
       throw new Error("O documento precisa estar catalogado antes da leitura.");
     }
@@ -285,7 +328,7 @@ export function MobileQuickEntry({ documents = [] }: Props) {
     const originalText = value.trim();
     if (!canWrite) { toast.error("Seu acesso é somente leitura."); return; }
     if (!originalText && !documents.length) { toast.error("Digite, fale ou anexe um documento."); return; }
-    if (!documents.length && !parseAmount(originalText)) { toast.error("Não encontrei o valor. Ex.: gastei 180 combustível."); return; }
+    if (!documents.length && !parseAmount(originalText)) { toast.error("Não encontrei o valor. Ex.: paguei 180 de combustível no Pix."); return; }
 
     setPending(null);
     setDraft(null);
@@ -293,7 +336,7 @@ export function MobileQuickEntry({ documents = [] }: Props) {
     if (documents.length) {
       try {
         const result = await documentInterpret(originalText);
-        const document = documents.find((item) => item.id);
+        const document = documents.filter((item) => item.id)[0];
         setInterpreting(false);
         if (!document?.id) {
           toast.error("Documento sem metadata. Recatalogue em Documentos.");
@@ -364,8 +407,8 @@ export function MobileQuickEntry({ documents = [] }: Props) {
   const confirm = async () => {
     if (!draft || !user) return;
     if (!canWrite) { toast.error("Seu acesso é somente leitura."); return; }
-    if (!draft.entityId) { toast.error("Selecione a entidade."); return; }
-    if (!draft.accountId) { toast.error("Selecione a conta da entidade."); return; }
+    if (!draft.entityId) { toast.error("Escolha de quem é essa movimentação."); return; }
+    if (!draft.accountId) { toast.error("Escolha em qual conta o dinheiro entrou ou saiu."); return; }
     if (saving) return;
     if (!idempotencyKeyRef.current) idempotencyKeyRef.current = newIdempotencyKey();
     setSaving(true);
@@ -383,7 +426,7 @@ export function MobileQuickEntry({ documents = [] }: Props) {
       p_amount: draft.amount,
       p_category_id: draft.categoryId ?? undefined,
       p_to_account_id: undefined,
-      p_payment_method: "other",
+      p_payment_method: draft.paymentMethod,
       p_competence_date: txDate,
       p_due_date: txDate,
       p_status: isPending ? "pending" : "paid",
@@ -418,8 +461,8 @@ export function MobileQuickEntry({ documents = [] }: Props) {
     <section className="rounded-2xl border border-primary/25 bg-gradient-to-b from-primary/10 to-card p-4 shadow-sm md:p-5">
       <div className="mb-3">
         <div className="flex items-center gap-2 text-primary"><Sparkles className="size-4" /><span className="text-xs font-semibold uppercase tracking-[0.16em]">Lançamento rápido</span></div>
-        <h2 className="mt-1 text-lg font-semibold">Digite, fale ou anexe um documento</h2>
-        <p className="mt-1 text-xs text-muted-foreground">Com anexo, a IA lê a nota/PDF e extrai os dados financeiros.</p>
+        <h2 className="mt-1 text-lg font-semibold">Conte o que aconteceu</h2>
+        <p className="mt-1 text-xs text-muted-foreground">Ex.: “Paguei 430 de combustível da TGuiaNet no Pix pelo Inter”. Eu organizo o resto para você conferir.</p>
       </div>
 
       {review ? (
@@ -478,34 +521,34 @@ export function MobileQuickEntry({ documents = [] }: Props) {
               ...pending.draft,
               entityId,
               categoryId,
-              accountId: accountForEntity(entityId, pending.draft.accountId),
+              accountId: accountForEntity(entityId, pending.draft.accountId, pending.draft.originalText),
             });
           }}
         />
       ) : null}
 
-      <Textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} placeholder={documents.length ? "Opcional: ex. nota da Comparta para eu receber" : "Recebi 2.607 da Energia..."} className="resize-none bg-background/70 text-base" />
+      <Textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} placeholder={documents.length ? "Opcional: diga o que é esse documento" : "Ex.: paguei 430 de combustível no Pix pelo Inter"} className="resize-none bg-background/70 text-base" />
 
       <div className="mt-3 grid grid-cols-2 gap-2">
         <Button variant="outline" className="h-11 gap-2" onClick={listening ? stopVoice : startVoice}>
           {listening ? <MicOff className="size-4" /> : <Mic className="size-4" />}{listening ? "Parar" : "Falar"}
         </Button>
         <Button className="h-11 gap-2" disabled={interpreting} onClick={() => void interpret()}>
-          <Send className="size-4" /> {interpreting ? (documents.length ? "Lendo documento..." : "Entendendo...") : "Interpretar"}
+          <Send className="size-4" /> {interpreting ? (documents.length ? "Lendo documento..." : "Entendendo...") : "Entender"}
         </Button>
       </div>
 
       {draft ? (
         <div className="mt-4 rounded-xl border border-border bg-background/75 p-4">
           <div className="flex items-center justify-between gap-2">
-            <p className="text-[11px] uppercase tracking-wider text-muted-foreground">Confirme antes de salvar</p>
+            <p className="text-[11px] uppercase tracking-wider text-muted-foreground">Foi isso que aconteceu?</p>
             <span className="rounded-full border border-border px-2 py-0.5 text-[10px] text-muted-foreground">{documents.length ? "IA + documento" : draft.parser === "openai" ? "IA" : "Local"}</span>
           </div>
           <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
-            <div><span className="block text-[11px] text-muted-foreground">Tipo</span><strong>{draft.kind === "income" ? "Entrada" : "Saída"}</strong></div>
+            <div><span className="block text-[11px] text-muted-foreground">O que aconteceu</span><strong>{draft.kind === "income" ? "Dinheiro entrou" : "Dinheiro saiu"}</strong></div>
             <div><span className="block text-[11px] text-muted-foreground">{draft.installmentCount ? "Valor da parcela" : "Valor"}</span><strong className={draft.kind === "income" ? "text-success" : "text-destructive"}>{brl(draft.amount)}</strong></div>
             <div className="col-span-2">
-              <span className="block text-[11px] text-muted-foreground">Entidade</span>
+              <span className="block text-[11px] text-muted-foreground">De quem é</span>
               <Select
                 value={draft.entityId ?? ""}
                 onValueChange={(value) => {
@@ -517,7 +560,7 @@ export function MobileQuickEntry({ documents = [] }: Props) {
                   setDraft({ ...draft, entityId: value, accountId: nextAccount?.id ?? null });
                 }}
               >
-                <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Selecione a entidade" /></SelectTrigger>
+                <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Escolha" /></SelectTrigger>
                 <SelectContent>
                   {data.entities.filter((item) => item.active).map((item) => (
                     <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
@@ -525,16 +568,16 @@ export function MobileQuickEntry({ documents = [] }: Props) {
                 </SelectContent>
               </Select>
               {!draft.entityId ? (
-                <p className="mt-1 text-[11px] text-muted-foreground">O texto não indicou a entidade. Escolha antes de confirmar.</p>
+                <p className="mt-1 text-[11px] text-muted-foreground">Não consegui identificar. Escolha antes de confirmar.</p>
               ) : null}
             </div>
             <div>
-              <span className="block text-[11px] text-muted-foreground">Categoria</span>
+              <span className="block text-[11px] text-muted-foreground">Organizar em</span>
               <Select
                 value={draft.categoryId ?? ""}
                 onValueChange={(value) => setDraft({ ...draft, categoryId: value })}
               >
-                <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Selecione a categoria" /></SelectTrigger>
+                <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Escolha a categoria" /></SelectTrigger>
                 <SelectContent>
                   {selectableCategories(data.categories, draft.kind).map((item) => (
                     <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
@@ -542,20 +585,21 @@ export function MobileQuickEntry({ documents = [] }: Props) {
                 </SelectContent>
               </Select>
             </div>
-            <div><span className="block text-[11px] text-muted-foreground">Status</span><strong>{draft.pending ? (draft.kind === "income" ? "A receber" : "A pagar") : "Liquidado"}</strong></div>
-            <div><span className="block text-[11px] text-muted-foreground">Data</span><strong>{draft.documentDate ?? "Hoje"}</strong></div>
-            {draft.vendor ? <div className="col-span-2"><span className="block text-[11px] text-muted-foreground">Documento / fornecedor</span><strong>{draft.vendor}</strong></div> : null}
-            {draft.installmentCount ? <><div><span className="block text-[11px] text-muted-foreground">Parcelas</span><strong>{draft.installmentCount}x</strong></div><div><span className="block text-[11px] text-muted-foreground">Total contratado</span><strong>{brl(draft.totalAmount ?? draft.amount * draft.installmentCount)}</strong></div></> : null}
-            <div className="col-span-2"><span className="block text-[11px] text-muted-foreground">Conta</span><strong>{account?.name ?? "—"}</strong></div>
+            <div><span className="block text-[11px] text-muted-foreground">Situação</span><strong>{draft.pending ? (draft.kind === "income" ? "Ainda vou receber" : "Ainda vou pagar") : (draft.kind === "income" ? "Já recebi" : "Já paguei")}</strong></div>
+            <div><span className="block text-[11px] text-muted-foreground">Quando</span><strong>{draft.documentDate ?? "Hoje"}</strong></div>
+            <div><span className="block text-[11px] text-muted-foreground">Como</span><strong>{paymentMethodLabel(draft.paymentMethod)}</strong></div>
+            {draft.vendor ? <div className="col-span-2"><span className="block text-[11px] text-muted-foreground">O que foi</span><strong>{draft.vendor}</strong></div> : null}
+            {draft.installmentCount ? <><div><span className="block text-[11px] text-muted-foreground">Parcelas</span><strong>{draft.installmentCount}x</strong></div><div><span className="block text-[11px] text-muted-foreground">Total</span><strong>{brl(draft.totalAmount ?? draft.amount * draft.installmentCount)}</strong></div></> : null}
+            <div className="col-span-2"><span className="block text-[11px] text-muted-foreground">Conta</span><strong>{account?.name ?? "Escolha uma conta"}</strong></div>
           </div>
           <div className="mt-4 grid grid-cols-2 gap-2">
             <Button variant="ghost" className="gap-2" onClick={() => { setDraft(null); setPending(null); }}><RotateCcw className="size-4" /> Corrigir</Button>
-            <Button className="gap-2" disabled={saving || !canWrite || !draft.entityId} onClick={confirm}><Check className="size-4" /> {saving ? "Salvando..." : "Confirmar"}</Button>
+            <Button className="gap-2" disabled={saving || !canWrite || !draft.entityId || !draft.accountId} onClick={confirm}><Check className="size-4" /> {saving ? "Salvando..." : "Sim, confirmar"}</Button>
           </div>
         </div>
       ) : null}
 
-      {!speechSupported ? <p className="mt-3 text-[11px] text-muted-foreground">Seu navegador não expõe reconhecimento de voz. Texto e documentos continuam funcionando normalmente.</p> : null}
+      {!speechSupported ? <p className="mt-3 text-[11px] text-muted-foreground">A voz não está disponível neste navegador. Texto e documentos continuam funcionando normalmente.</p> : null}
     </section>
   );
 }
