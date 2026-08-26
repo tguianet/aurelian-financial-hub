@@ -98,6 +98,11 @@ export type QuickEntryResolution = {
   needsCategory: boolean;
 };
 
+function singleConsensus(values: Array<string | null | undefined>) {
+  const present = [...new Set(values.filter((value): value is string => Boolean(value)))];
+  return present.length === 1 ? present[0] : null;
+}
+
 export function resolveQuickEntryFields(input: {
   text: string;
   kind: "income" | "expense";
@@ -157,6 +162,24 @@ export function resolveQuickEntryFields(input: {
   const partialRules = findPartialSemanticRules(extracted.normalized, input.rules)
     .filter((rule) => rule.id !== exact?.id);
 
+  if (!exact && partialRules.length > 0) {
+    const entityConsensus = singleConsensus(partialRules.map((rule) => rule.entity_id));
+    const categoryConsensus = singleConsensus(partialRules.map((rule) => rule.category_id));
+
+    if (!entityId && entityConsensus && activeEntityIds.has(entityConsensus)) {
+      entityId = entityConsensus;
+      appliedRule = partialRules.find((rule) => rule.entity_id === entityConsensus) ?? appliedRule;
+    }
+
+    if (!categoryId && categoryConsensus) {
+      const category = activeCategories.find((item) => item.id === categoryConsensus);
+      if (category && category.kind === input.kind) {
+        categoryId = category.id;
+        appliedRule = partialRules.find((rule) => rule.category_id === categoryConsensus) ?? appliedRule;
+      }
+    }
+  }
+
   return {
     hint: extracted.normalized,
     originalHint: extracted.original,
@@ -172,13 +195,13 @@ export function resolveQuickEntryFields(input: {
 }
 
 export function disambiguationTitle(needsEntity: boolean, needsCategory: boolean) {
-  if (needsEntity && needsCategory) return "Preciso de uma informação";
-  if (needsEntity) return "Em qual empresa devo lançar?";
-  return "Qual categoria devo usar?";
+  if (needsEntity && needsCategory) return "Só preciso confirmar duas coisas";
+  if (needsEntity) return "De quem é essa movimentação?";
+  return "Como você quer organizar isso?";
 }
 
 export function disambiguationConfirmLabel(needsEntity: boolean, needsCategory: boolean) {
   if (needsEntity && needsCategory) return "Continuar";
-  if (needsEntity) return "Usar esta entidade";
+  if (needsEntity) return "Usar esta opção";
   return "Usar esta categoria";
 }
