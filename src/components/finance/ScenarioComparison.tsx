@@ -3,6 +3,16 @@ import { Bot, GitCompareArrows, ShieldCheck, TriangleAlert } from "lucide-react"
 import { brl } from "@/lib/finance";
 import { parseBRLMoney, roundMoney } from "@/lib/money";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import type { DecisionProjection } from "@/components/finance/DecisionSimulator";
 
 type Props = {
@@ -10,7 +20,9 @@ type Props = {
   freeCash: number;
   projections: DecisionProjection[];
   onAskAurelian?: (question: string) => void;
+  onUsePlan?: () => void;
 };
+
 
 type Scenario = {
   label: string;
