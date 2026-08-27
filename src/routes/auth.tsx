@@ -43,12 +43,18 @@ function AuthPage() {
       }
     };
     void restore();
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (active && session) void navigate({ to: "/dashboard", replace: true });
-    });
+    let unsubscribe: (() => void) | undefined;
+    try {
+      const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+        if (active && session) void navigate({ to: "/dashboard", replace: true });
+      });
+      unsubscribe = () => sub.subscription.unsubscribe();
+    } catch (error) {
+      console.warn("[Auth] Não foi possível observar mudanças de sessão.", error);
+    }
     return () => {
       active = false;
-      sub.subscription.unsubscribe();
+      unsubscribe?.();
     };
   }, [navigate]);
 
