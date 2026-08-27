@@ -73,6 +73,19 @@ function AuthPage() {
     }
   };
 
+  const waitForSession = async () => {
+    for (let i = 0; i < 20; i += 1) {
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (data.session) return true;
+      } catch (error) {
+        console.warn("[Auth] Aguardando sessão…", error);
+      }
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    return false;
+  };
+
   const google = async () => {
     setBusy(true);
     try {
@@ -85,6 +98,12 @@ function AuthPage() {
         return;
       }
       if (result.redirected) return;
+      const ok = await waitForSession();
+      if (!ok) {
+        toast.error("Login concluído, mas a sessão não foi salva. Tente novamente.");
+        setBusy(false);
+        return;
+      }
       navigate({ to: "/dashboard", replace: true });
     } catch (error) {
       console.warn("[Auth] Falha ao iniciar login Google.", error);
@@ -92,6 +111,7 @@ function AuthPage() {
       setBusy(false);
     }
   };
+
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4 py-10">
