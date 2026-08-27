@@ -1,9 +1,9 @@
-const CACHE_NAME = "aurelian-pwa-v1";
+const CACHE_NAME = "aurelian-pwa-v2";
 const STATIC_ASSETS = [
   "/manifest.webmanifest",
   "/icons/aurelian-icon.svg",
   "/icons/aurelian-maskable.svg",
-  "/favicon.ico"
+  "/favicon.ico",
 ];
 
 self.addEventListener("install", (event) => {
@@ -13,9 +13,12 @@ self.addEventListener("install", (event) => {
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))),
-    ),
+    Promise.all([
+      caches.keys().then((keys) =>
+        Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))),
+      ),
+      self.registration.navigationPreload?.enable?.().catch(() => undefined),
+    ]),
   );
   self.clients.claim();
 });
@@ -29,7 +32,8 @@ self.addEventListener("fetch", (event) => {
 
   if (
     url.pathname.startsWith("/api/") ||
-    url.pathname.includes("/auth/") ||
+    url.pathname === "/auth" ||
+    url.pathname.startsWith("/auth/") ||
     url.pathname.includes("supabase")
   ) {
     return;
@@ -37,10 +41,18 @@ self.addEventListener("fetch", (event) => {
 
   if (request.mode === "navigate") {
     event.respondWith(
-      fetch(request).catch(() => caches.match("/manifest.webmanifest").then(() => new Response(
-        "<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Aurelian Finance</title><style>body{margin:0;background:#080806;color:#fff;font-family:system-ui;display:grid;min-height:100vh;place-items:center;padding:24px;text-align:center}div{max-width:420px}h1{color:#eab308}</style></head><body><div><h1>Aurelian Finance</h1><p>Sem conexão no momento. Reconecte-se à internet para acessar seus dados financeiros atualizados.</p></div></body></html>",
-        { headers: { "content-type": "text/html; charset=utf-8" } },
-      ))),
+      (async () => {
+        try {
+          const preload = await event.preloadResponse;
+          if (preload) return preload;
+          return await fetch(request);
+        } catch {
+          return new Response(
+            "<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Aurelian Finance</title><style>body{margin:0;background:#080806;color:#fff;font-family:system-ui;display:grid;min-height:100vh;place-items:center;padding:24px;text-align:center}div{max-width:420px}h1{color:#eab308}</style></head><body><div><h1>Aurelian Finance</h1><p>Sem conexão no momento. Reconecte-se à internet para acessar seus dados financeiros atualizados.</p></div></body></html>",
+            { headers: { "content-type": "text/html; charset=utf-8" } },
+          );
+        }
+      })(),
     );
     return;
   }
