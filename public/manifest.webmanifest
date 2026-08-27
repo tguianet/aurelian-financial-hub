@@ -2,7 +2,7 @@
   "name": "Aurelian Finance",
   "short_name": "Aurelian",
   "description": "Controle financeiro pessoal e multiempresa.",
-  "start_url": "/dashboard",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait-primary",
