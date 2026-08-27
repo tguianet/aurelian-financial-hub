@@ -8,17 +8,35 @@ export function useAuthUser() {
 
   useEffect(() => {
     let active = true;
-    supabase.auth.getUser().then(({ data }) => {
-      if (!active) return;
-      setUser(data.user ?? null);
-      setLoading(false);
-    });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-    });
+
+    const loadUser = async () => {
+      try {
+        const { data } = await supabase.auth.getUser();
+        if (!active) return;
+        setUser(data.user ?? null);
+      } catch (error) {
+        console.warn("[Auth] Não foi possível carregar o usuário no navegador.", error);
+        if (active) setUser(null);
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+
+    void loadUser();
+
+    let unsubscribe: (() => void) | undefined;
+    try {
+      const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+        if (active) setUser(session?.user ?? null);
+      });
+      unsubscribe = () => sub.subscription.unsubscribe();
+    } catch (error) {
+      console.warn("[Auth] Não foi possível observar mudanças de sessão.", error);
+    }
+
     return () => {
       active = false;
-      sub.subscription.unsubscribe();
+      unsubscribe?.();
     };
   }, []);
 
