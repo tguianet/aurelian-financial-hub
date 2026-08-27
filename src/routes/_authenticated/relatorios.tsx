@@ -11,7 +11,7 @@ import { KpiCard } from "@/components/finance/KpiCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { brl, categoryBreakdown, entitySummaries, toDate, today } from "@/lib/finance";
+import { ALL, brl, categoryBreakdown, toDate, today } from "@/lib/finance";
 import { firstOfMonthIso, localDateIso } from "@/lib/date";
 
 export const Route = createFileRoute("/_authenticated/relatorios")({
@@ -55,7 +55,29 @@ function Relatorios() {
   );
   const income = rows.reduce((s, r) => s + r.income, 0);
   const expense = rows.reduce((s, r) => s + r.expense, 0);
-  const byEntity = entitySummaries(data, today());
+  const byEntity = useMemo(() => {
+    if (!validRange) return [];
+
+    const fromDate = toDate(from);
+    const toDateValue = toDate(to);
+    const entities = entityId === ALL
+      ? data.entities
+      : data.entities.filter((entity) => entity.id === entityId);
+
+    return entities
+      .map((entity) => {
+        const entityRows = categoryBreakdown(data, entity.id, fromDate, toDateValue);
+        const entityIncome = entityRows.reduce((sum, row) => sum + row.income, 0);
+        const entityExpense = entityRows.reduce((sum, row) => sum + row.expense, 0);
+        return {
+          entity,
+          income: entityIncome,
+          expense: entityExpense,
+          result: entityIncome - entityExpense,
+        };
+      })
+      .sort((a, b) => b.result - a.result);
+  }, [data, entityId, from, to, validRange]);
 
   const exportCsv = () => {
     if (!validRange) { toast.error("Período inválido."); return; }
@@ -106,7 +128,7 @@ function Relatorios() {
                     <Td className={`num text-right ${r.income - r.expense >= 0 ? "text-success" : "text-destructive"}`}>{brl(r.income - r.expense)}</Td>
                   </tr>
                 ))}
-                {rows.length === 0 ? <tr><td colSpan={4} className="p-8 text-center text-sm text-muted-foreground">Nenhum lançamento liquidado no período.</td></tr> : null}
+                {rows.length === 0 ? <tr><td colSpan={4} className="p-8 text-center text-sm text-muted-foreground">Nenhum lançamento no período selecionado.</td></tr> : null}
               </tbody>
             </table>
           </div>
@@ -128,11 +150,14 @@ function Relatorios() {
       </div>
 
       <div className="panel mt-5 p-5">
-        <h2 className="mb-4 text-sm font-semibold">Resultado do mês por empresa</h2>
+        <h2 className="mb-4 text-sm font-semibold">Resultado por empresa no período</h2>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[560px] text-sm">
             <thead><tr className="border-b border-border text-left text-[11px] uppercase tracking-wider text-muted-foreground"><Th>Entidade</Th><Th className="text-right">Receitas</Th><Th className="text-right">Despesas</Th><Th className="text-right">Resultado</Th></tr></thead>
-            <tbody>{byEntity.map((r) => <tr key={r.entity.id} className="border-b border-border/60 last:border-0"><Td>{r.entity.name}</Td><Td className="num text-right text-success">{brl(r.income)}</Td><Td className="num text-right text-destructive">{brl(r.expense)}</Td><Td className={`num text-right font-medium ${r.result >= 0 ? "text-success" : "text-destructive"}`}>{brl(r.result)}</Td></tr>)}</tbody>
+            <tbody>
+              {byEntity.map((r) => <tr key={r.entity.id} className="border-b border-border/60 last:border-0"><Td>{r.entity.name}</Td><Td className="num text-right text-success">{brl(r.income)}</Td><Td className="num text-right text-destructive">{brl(r.expense)}</Td><Td className={`num text-right font-medium ${r.result >= 0 ? "text-success" : "text-destructive"}`}>{brl(r.result)}</Td></tr>)}
+              {byEntity.length === 0 ? <tr><td colSpan={4} className="p-8 text-center text-sm text-muted-foreground">Nenhum resultado no período selecionado.</td></tr> : null}
+            </tbody>
           </table>
         </div>
       </div>
