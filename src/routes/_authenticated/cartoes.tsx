@@ -98,14 +98,17 @@ function Cartoes() {
               </div>
 
               <div className="mt-4 flex flex-wrap gap-2">
-                {canWrite ? (
+                {canWrite && c.active ? (
                   <NewPurchaseDialog defaultCardId={c.id}>
                     <Button size="sm">Registrar compra</Button>
                   </NewPurchaseDialog>
                 ) : null}
-                {canWrite ? <PayBillDialog card={c} /> : null}
+                {canWrite && bill.open > 0 ? <PayBillDialog card={c} /> : null}
                 <BillDetailsDialog card={c} />
               </div>
+              {!c.active ? (
+                <p className="mt-2 text-[11px] text-muted-foreground">Cartão desativado: novas compras estão bloqueadas, mas faturas antigas continuam disponíveis para pagamento.</p>
+              ) : null}
             </div>
           );
         })}
