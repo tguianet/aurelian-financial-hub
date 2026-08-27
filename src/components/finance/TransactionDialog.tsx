@@ -30,7 +30,7 @@ import { parseBRLMoney } from "@/lib/money";
 const todayIso = () => localDateIso();
 
 export function TransactionDialog() {
-  const { data } = useEntityScope();
+  const { data, entityId: selectedEntityId } = useEntityScope();
   const { user } = useAuthUser();
   const { canWrite } = useFinanceAccess();
   const refresh = useRefreshFinance();
@@ -58,8 +58,8 @@ export function TransactionDialog() {
   const accounts = data.accounts.filter((a) => !entityId || a.entity_id === entityId);
   const categories = kind === "transfer" ? [] : selectableCategories(data.categories, kind);
   const cards = useMemo(
-    () => data.cards.filter((c) => c.active && (!entityId || c.entity_id === entityId)),
-    [data.cards, entityId],
+    () => data.cards.filter((c) => c.active !== false),
+    [data.cards],
   );
 
   useEffect(() => {
@@ -67,22 +67,28 @@ export function TransactionDialog() {
   }, [kind, method]);
 
   useEffect(() => {
-    if (cardId && !cards.some((c) => c.id === cardId)) setCardId("");
-  }, [cardId, cards]);
-
-  useEffect(() => {
     if (kind === "transfer" && recurrence !== "none") setRecurrence("none");
   }, [kind, recurrence]);
 
   useEffect(() => {
-    if (open) idempotencyKeyRef.current = newIdempotencyKey();
-  }, [open]);
+    if (!open) return;
+    idempotencyKeyRef.current = newIdempotencyKey();
+    if (selectedEntityId !== "all") setEntityId(selectedEntityId);
+  }, [open, selectedEntityId]);
 
   const reset = () => {
     setDescription("");
     setAmount("");
     setNotes("");
     setInstallments("1");
+  };
+
+  const selectCard = (nextCardId: string) => {
+    setCardId(nextCardId);
+    const card = cards.find((item) => item.id === nextCardId);
+    if (!card) return;
+    setEntityId(card.entity_id);
+    setAccountId("");
   };
 
   const submit = async () => {
@@ -97,7 +103,9 @@ export function TransactionDialog() {
 
     if (isCreditPurchase) {
       if (!cardId) return fail("Escolha o cartão usado.");
-      if (!cards.some((c) => c.id === cardId)) return fail("Escolha um cartão ativo dessa pessoa ou empresa.");
+      const selectedCard = cards.find((c) => c.id === cardId);
+      if (!selectedCard) return fail("Escolha um cartão ativo.");
+      if (selectedCard.entity_id !== entityId) return fail("O cartão precisa pertencer à pessoa ou empresa da movimentação.");
       const count = Math.max(1, Number(installments) || 1);
       if (count < 1 || count > 48) return fail("Escolha entre 1 e 48 parcelas.");
       setBusy(true);
@@ -221,7 +229,7 @@ export function TransactionDialog() {
           </Field>
 
           <Field label="De quem é essa movimentação?">
-            <Select value={entityId} onValueChange={setEntityId}>
+            <Select value={entityId} onValueChange={(value) => { setEntityId(value); setAccountId(""); }}>
               <SelectTrigger><SelectValue placeholder="Escolha" /></SelectTrigger>
               <SelectContent>
                 {data.entities.map((e) => (
@@ -295,14 +303,20 @@ export function TransactionDialog() {
 
           {isCreditPurchase ? (
             <Field label="Qual cartão?" className="sm:col-span-2">
-              <Select value={cardId} onValueChange={setCardId}>
-                <SelectTrigger><SelectValue placeholder="Escolha o cartão" /></SelectTrigger>
+              <Select value={cardId} onValueChange={selectCard}>
+                <SelectTrigger><SelectValue placeholder={cards.length > 0 ? "Escolha o cartão" : "Nenhum cartão ativo cadastrado"} /></SelectTrigger>
                 <SelectContent>
-                  {cards.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>{c.name}{c.brand ? ` · ${c.brand}` : ""}</SelectItem>
-                  ))}
+                  {cards.map((c) => {
+                    const entity = data.entities.find((item) => item.id === c.entity_id);
+                    return (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name}{c.brand ? ` · ${c.brand}` : ""}{entity ? ` · ${entity.name}` : ""}
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
+              {cards.length === 0 ? <p className="mt-1.5 text-xs text-muted-foreground">Cadastre ou reative um cartão em Meus cartões.</p> : null}
             </Field>
           ) : null}
 
