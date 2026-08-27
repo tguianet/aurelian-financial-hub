@@ -47,6 +47,53 @@ type CatalogDoc = {
 };
 
 type OrphanFile = { name: string; path: string };
+type StorageInboxFile = { name: string };
+
+const CATALOG_PAGE_SIZE = 500;
+const STORAGE_PAGE_SIZE = 100;
+
+async function loadKnownDocumentPaths() {
+  const known = new Set<string>();
+  let from = 0;
+
+  while (true) {
+    const { data, error } = await supabase
+      .from("financial_documents")
+      .select("storage_path")
+      .range(from, from + CATALOG_PAGE_SIZE - 1);
+    if (error) throw error;
+
+    const rows = (data ?? []) as Array<{ storage_path: string | null }>;
+    for (const row of rows) {
+      if (row.storage_path) known.add(row.storage_path);
+    }
+    if (rows.length < CATALOG_PAGE_SIZE) break;
+    from += CATALOG_PAGE_SIZE;
+  }
+
+  return known;
+}
+
+async function loadInboxFiles(userId: string) {
+  const files: StorageInboxFile[] = [];
+  let offset = 0;
+
+  while (true) {
+    const { data, error } = await supabase.storage.from("financial-documents").list(`${userId}/inbox`, {
+      limit: STORAGE_PAGE_SIZE,
+      offset,
+      sortBy: { column: "created_at", order: "desc" },
+    });
+    if (error) throw error;
+
+    const page = (data ?? []) as StorageInboxFile[];
+    files.push(...page);
+    if (page.length < STORAGE_PAGE_SIZE) break;
+    offset += STORAGE_PAGE_SIZE;
+  }
+
+  return files;
+}
 
 function iconFor(name: string) {
   const ext = name.split(".").pop()?.toLowerCase();
@@ -72,35 +119,37 @@ function Documentos() {
   const load = useCallback(async () => {
     if (!user) return;
     setLoading(true);
-    const [catalog, storage] = await Promise.all([
-      supabase
-        .from("financial_documents")
-        .select(
-          "id, file_name, storage_path, status, created_at, size_bytes, interpretation_json, interpretation_error, transaction_id, credit_card_purchase_id",
-        )
-        .in("status", ["uploaded", "processing", "interpreted", "failed", "linked"])
-        .order("created_at", { ascending: false })
-        .limit(80),
-      supabase.storage.from("financial-documents").list(`${user.id}/inbox`, {
-        limit: 100,
-        sortBy: { column: "created_at", order: "desc" },
-      }),
-    ]);
-    setLoading(false);
-    if (catalog.error) {
-      toast.error(catalog.error.message);
-      return;
-    }
-    const rows = (catalog.data ?? []) as CatalogDoc[];
-    setDocs(rows);
 
-    const known = new Set(rows.map((row) => row.storage_path));
-    const unmatched: OrphanFile[] = [];
-    for (const file of storage.data ?? []) {
-      const path = `${user.id}/inbox/${file.name}`;
-      if (!known.has(path)) unmatched.push({ name: file.name, path });
+    try {
+      const [catalog, known, storageFiles] = await Promise.all([
+        supabase
+          .from("financial_documents")
+          .select(
+            "id, file_name, storage_path, status, created_at, size_bytes, interpretation_json, interpretation_error, transaction_id, credit_card_purchase_id",
+          )
+          .in("status", ["uploaded", "processing", "interpreted", "failed", "linked"])
+          .order("created_at", { ascending: false })
+          .limit(80),
+        loadKnownDocumentPaths(),
+        loadInboxFiles(user.id),
+      ]);
+
+      if (catalog.error) throw catalog.error;
+      const rows = (catalog.data ?? []) as CatalogDoc[];
+      setDocs(rows);
+
+      const unmatched: OrphanFile[] = [];
+      for (const file of storageFiles) {
+        const path = `${user.id}/inbox/${file.name}`;
+        if (!known.has(path)) unmatched.push({ name: file.name, path });
+      }
+      setOrphans(unmatched);
+    } catch (error) {
+      setOrphans([]);
+      toast.error(error instanceof Error ? error.message : "Não foi possível carregar os documentos.");
+    } finally {
+      setLoading(false);
     }
-    setOrphans(unmatched);
   }, [user]);
 
   useEffect(() => {
