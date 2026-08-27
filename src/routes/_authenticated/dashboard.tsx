@@ -12,6 +12,7 @@ import { PageHeader } from "@/components/finance/PageHeader";
 import { TransactionDialog } from "@/components/finance/TransactionDialog";
 import { Button } from "@/components/ui/button";
 import {
+  ALL,
   addDays,
   brl,
   buildScope,
@@ -46,8 +47,10 @@ function Dashboard() {
   const k = computeKpis(data, entityId, ref);
   const scope = buildScope(data, entityId);
   const horizon = addDays(ref, 30);
-  const summaries = entitySummaries(data, ref);
+  const allSummaries = entitySummaries(data, ref);
+  const summaries = entityId === ALL ? allSummaries : allSummaries.filter((summary) => summary.entity.id === entityId);
   const proj = projection(data, entityId, ref);
+  const projected30 = proj.find((point) => point.days === 30)?.balance ?? k.projectedBalance;
 
   let receivables30 = 0;
   let payables30 = 0;
@@ -289,7 +292,7 @@ function Dashboard() {
         <KpiCard label="Ainda vou receber" value={brl(k.receivables)} icon={<ArrowDownToLine className="size-4" />} hint={k.overdueReceivables > 0 ? `Tem ${brl(k.overdueReceivables)} atrasado` : "Nada atrasado"} />
         <KpiCard label="Ainda preciso pagar" value={brl(k.payables)} tone="negative" icon={<ArrowUpFromLine className="size-4" />} hint={k.overduePayables > 0 ? `Tem ${brl(k.overduePayables)} atrasado` : "Nada atrasado"} />
         <KpiCard label="Dinheiro reservado" value={brl(k.reserves)} icon={<ShieldCheck className="size-4" />} />
-        <KpiCard label="Como devo ficar" value={brl(k.projectedBalance)} tone={k.projectedBalance >= 0 ? "positive" : "negative"} icon={<LineChartIcon className="size-4" />} />
+        <KpiCard label="Como devo ficar em 30 dias" value={brl(projected30)} tone={projected30 >= 0 ? "positive" : "negative"} icon={<LineChartIcon className="size-4" />} hint="Usa a mesma projeção abaixo, incluindo recorrências ainda não materializadas." />
       </div>
 
       <div className="panel mt-4 overflow-hidden p-4 sm:mt-5 sm:p-5">
