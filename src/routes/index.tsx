@@ -31,20 +31,24 @@ function Landing() {
     let active = true;
 
     const redirect = async () => {
-      try {
-        const { data, error } = await supabase.auth.getSession();
-        if (!active) return;
-        if (error) {
-          console.warn("[Auth] Não foi possível restaurar a sessão; abrindo login.", error);
-          await navigate({ to: "/auth", replace: true });
-          return;
+      // Após o retorno do login social a sessão pode levar alguns instantes
+      // para ser persistida; tentamos algumas vezes antes de mandar ao login.
+      for (let i = 0; i < 12; i += 1) {
+        try {
+          const { data } = await supabase.auth.getSession();
+          if (!active) return;
+          if (data.session) {
+            await navigate({ to: "/dashboard", replace: true });
+            return;
+          }
+        } catch (error) {
+          console.warn("[Auth] Aguardando sessão…", error);
         }
-        await navigate({ to: data.session ? "/dashboard" : "/auth", replace: true });
-      } catch (error) {
-        console.error("[Auth] Falha ao iniciar a sessão no cliente.", error);
-        if (active) await navigate({ to: "/auth", replace: true });
+        await new Promise((r) => setTimeout(r, 250));
       }
+      if (active) await navigate({ to: "/auth", replace: true });
     };
+
 
     void redirect();
     return () => {
