@@ -33,9 +33,19 @@ function AuthPage() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) navigate({ to: "/dashboard", replace: true });
-    });
+    let active = true;
+    const restore = async () => {
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (active && data.session) await navigate({ to: "/dashboard", replace: true });
+      } catch (error) {
+        console.warn("[Auth] Não foi possível restaurar a sessão na tela de login.", error);
+      }
+    };
+    void restore();
+    return () => {
+      active = false;
+    };
   }, [navigate]);
 
   const submit = async (e: React.FormEvent) => {
@@ -65,16 +75,22 @@ function AuthPage() {
 
   const google = async () => {
     setBusy(true);
-    const result = await lovable.auth.signInWithOAuth("google", {
-      redirect_uri: window.location.origin,
-    });
-    if (result.error) {
+    try {
+      const result = await lovable.auth.signInWithOAuth("google", {
+        redirect_uri: window.location.origin,
+      });
+      if (result.error) {
+        toast.error("Falha ao entrar com Google.");
+        setBusy(false);
+        return;
+      }
+      if (result.redirected) return;
+      navigate({ to: "/dashboard", replace: true });
+    } catch (error) {
+      console.warn("[Auth] Falha ao iniciar login Google.", error);
       toast.error("Falha ao entrar com Google.");
       setBusy(false);
-      return;
     }
-    if (result.redirected) return;
-    navigate({ to: "/dashboard", replace: true });
   };
 
   return (
