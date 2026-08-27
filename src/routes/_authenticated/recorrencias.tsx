@@ -25,7 +25,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { selectableCategories } from "@/lib/categories";
 import { parseBRLMoney } from "@/lib/money";
-import { localDateIso } from "@/lib/date";
+import { isValidDateIso, localDateIso } from "@/lib/date";
 import {
   brl,
   buildScope,
@@ -274,6 +274,37 @@ function RecurringDialog({
     if (!description.trim()) { toast.error("Informe a descrição."); return; }
     const value = parseMoney(amount);
     if (value === null || value <= 0) { toast.error("Informe um valor válido."); return; }
+    if (!data.accounts.some((a) => a.id === accountId && a.active && a.entity_id === ownerEntityId)) {
+      toast.error("Selecione uma conta ativa da entidade escolhida.");
+      return;
+    }
+    if (!categories.some((c) => c.id === categoryId)) {
+      toast.error("Selecione uma categoria compatível com o tipo da recorrência.");
+      return;
+    }
+    if (!isValidDateIso(startsAt)) { toast.error("Informe uma data de início válida."); return; }
+    if (endsAt && !isValidDateIso(endsAt)) { toast.error("Informe uma data de encerramento válida."); return; }
+    if (endsAt && endsAt < startsAt) { toast.error("A data de encerramento não pode ser anterior ao início."); return; }
+    if (!(["monthly", "weekly", "yearly"] as const).includes(frequency as "monthly" | "weekly" | "yearly")) {
+      toast.error("Frequência inválida.");
+      return;
+    }
+
+    const day = Number(dayOfMonth);
+    const week = Number(weekday);
+    const month = Number(monthOfYear);
+    if (frequency !== "weekly" && (!Number.isInteger(day) || day < 1 || day > 31)) {
+      toast.error("O dia da recorrência deve estar entre 1 e 31.");
+      return;
+    }
+    if (frequency === "weekly" && (!Number.isInteger(week) || week < 1 || week > 7)) {
+      toast.error("Selecione um dia da semana válido.");
+      return;
+    }
+    if (frequency === "yearly" && (!Number.isInteger(month) || month < 1 || month > 12)) {
+      toast.error("O mês da recorrência deve estar entre 1 e 12.");
+      return;
+    }
 
     const payload = {
       p_entity_id: ownerEntityId,
@@ -284,9 +315,9 @@ function RecurringDialog({
       p_amount: value,
       p_frequency: frequency,
       p_starts_at: startsAt,
-      p_day_of_month: frequency === "weekly" ? undefined : Number(dayOfMonth),
-      p_weekday: frequency === "weekly" ? Number(weekday) : undefined,
-      p_month_of_year: frequency === "yearly" ? Number(monthOfYear) : undefined,
+      p_day_of_month: frequency === "weekly" ? undefined : day,
+      p_weekday: frequency === "weekly" ? week : undefined,
+      p_month_of_year: frequency === "yearly" ? month : undefined,
       p_ends_at: endsAt || undefined,
       p_payment_method: method,
       p_notes: notes.trim() || undefined,
