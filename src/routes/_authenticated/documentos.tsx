@@ -473,7 +473,7 @@ function Documentos() {
                     </span>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium">{doc.file_name}</p>
-                      <p className="mt-1 text-[11px] text-muted-foreground">{DOCUMENT_STATUS_LABEL.linked}</p>
+                      <p className="mt-1 text-[11px] text-muted-foreground">{DOCUMENT_STATUS_LABEL['linked']}</p>
                     </div>
                   </div>
                   <div className="mt-4 grid grid-cols-2 gap-2">
