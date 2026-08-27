@@ -13,12 +13,30 @@ interface Ctx {
 const EntityCtx = createContext<Ctx | null>(null);
 const STORAGE_KEY = "aurelian.entity";
 
+function readStoredEntity() {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage.getItem(STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredEntity(value: string) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(STORAGE_KEY, value);
+  } catch {
+    // Some mobile/private browsers deny storage. Keep the in-memory selection.
+  }
+}
+
 export function EntityProvider({ children }: { children: ReactNode }) {
   const { data, isLoading } = useFinance();
   const [entityId, setEntityIdState] = useState<string>(ALL);
 
   useEffect(() => {
-    const saved = window.localStorage.getItem(STORAGE_KEY);
+    const saved = readStoredEntity();
     if (saved) setEntityIdState(saved);
   }, []);
 
@@ -27,14 +45,14 @@ export function EntityProvider({ children }: { children: ReactNode }) {
     const stillExists = data.entities.some((e) => e.id === entityId);
     if (!stillExists) {
       setEntityIdState(ALL);
-      window.localStorage.setItem(STORAGE_KEY, ALL);
+      writeStoredEntity(ALL);
     }
   }, [data.entities, entityId, isLoading]);
 
   const setEntityId = (id: string) => {
     const next = id === ALL || data.entities.some((e) => e.id === id) ? id : ALL;
     setEntityIdState(next);
-    window.localStorage.setItem(STORAGE_KEY, next);
+    writeStoredEntity(next);
   };
 
   const entityName = useMemo(() => {
