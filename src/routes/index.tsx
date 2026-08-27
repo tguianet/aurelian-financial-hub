@@ -28,9 +28,28 @@ function Landing() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      navigate({ to: data.session ? "/dashboard" : "/auth", replace: true });
-    });
+    let active = true;
+
+    const redirect = async () => {
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        if (!active) return;
+        if (error) {
+          console.warn("[Auth] Não foi possível restaurar a sessão; abrindo login.", error);
+          await navigate({ to: "/auth", replace: true });
+          return;
+        }
+        await navigate({ to: data.session ? "/dashboard" : "/auth", replace: true });
+      } catch (error) {
+        console.error("[Auth] Falha ao iniciar a sessão no cliente.", error);
+        if (active) await navigate({ to: "/auth", replace: true });
+      }
+    };
+
+    void redirect();
+    return () => {
+      active = false;
+    };
   }, [navigate]);
 
   return (
