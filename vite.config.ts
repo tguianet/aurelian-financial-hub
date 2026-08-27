@@ -7,6 +7,12 @@
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
 export default defineConfig({
+  vite: {
+    build: {
+      // Avoid shipping syntax that older iOS Safari / Android WebViews may not parse.
+      target: "es2020",
+    },
+  },
   tanstackStart: {
     // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
     // Keep the custom API entry isolated and force Vite to rebuild it after schema/route updates.
