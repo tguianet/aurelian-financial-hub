@@ -45,15 +45,17 @@ function PaymentAccountFields({
   paidAt,
   setPaidAt,
   defaultAccountId,
+  entityId,
 }: {
   accountId: string;
   setAccountId: (v: string) => void;
   paidAt: string;
   setPaidAt: (v: string) => void;
   defaultAccountId: string | null;
+  entityId: string;
 }) {
   const { data } = useEntityScope();
-  const accounts = data.accounts.filter((a) => a.active);
+  const accounts = data.accounts.filter((a) => a.active && a.entity_id === entityId);
   const resolved = accountId || defaultAccountId || "";
 
   return (
@@ -68,6 +70,7 @@ function PaymentAccountFields({
             ))}
           </SelectContent>
         </Select>
+        {accounts.length === 0 ? <p className="mt-1.5 text-[11px] text-muted-foreground">Cadastre uma conta ativa para esta entidade antes de pagar a fatura.</p> : null}
       </div>
       <div>
         <Label className="mb-1.5 block text-xs uppercase tracking-wider text-muted-foreground">Data do pagamento</Label>
@@ -87,19 +90,25 @@ export function PayBillDialog({
   children?: ReactNode;
 }) {
   const { canWrite } = useFinanceAccess();
+  const { data } = useEntityScope();
   const refresh = useRefreshFinance();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [accountId, setAccountId] = useState(card.account_id ?? "");
   const [paidAt, setPaidAt] = useState(todayIso());
   const [month, setMonth] = useState(referenceMonth ?? monthInput(today()));
+  const hasPaymentAccount = data.accounts.some((a) => a.active && a.entity_id === card.entity_id);
 
   const submit = async () => {
     if (!canWrite) { toast.error("Seu acesso é somente leitura."); return; }
     const account = accountId || card.account_id;
     if (!account) { toast.error("Selecione a conta de pagamento."); return; }
+    if (!data.accounts.some((a) => a.id === account && a.active && a.entity_id === card.entity_id)) {
+      toast.error("Selecione uma conta ativa da mesma pessoa ou empresa do cartão.");
+      return;
+    }
     setBusy(true);
-    const { data, error } = await supabase.rpc("pay_credit_card_bill", {
+    const { data: result, error } = await supabase.rpc("pay_credit_card_bill", {
       p_credit_card_id: card.id,
       p_reference_month: monthInputToDate(month),
       p_account_id: account,
@@ -107,7 +116,7 @@ export function PayBillDialog({
     });
     setBusy(false);
     if (error) { toast.error(error.message); return; }
-    const row = Array.isArray(data) ? data[0] : data;
+    const row = Array.isArray(result) ? result[0] : result;
     toast.success(
       `Fatura paga: ${brl(Number(row?.total_paid ?? 0))} em ${row?.installment_count ?? 0} parcela(s). O caixa saiu da conta; a despesa não foi lançada de novo.`,
     );
@@ -140,11 +149,12 @@ export function PayBillDialog({
             paidAt={paidAt}
             setPaidAt={setPaidAt}
             defaultAccountId={card.account_id}
+            entityId={card.entity_id}
           />
         </div>
         <DialogFooter>
           <Button variant="ghost" onClick={() => setOpen(false)}>Cancelar</Button>
-          <Button onClick={submit} disabled={busy}>{busy ? "Pagando…" : "Pagar fatura"}</Button>
+          <Button onClick={submit} disabled={busy || !hasPaymentAccount}>{busy ? "Pagando…" : "Pagar fatura"}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -161,16 +171,22 @@ export function PayInstallmentDialog({
   children?: ReactNode;
 }) {
   const { canWrite } = useFinanceAccess();
+  const { data } = useEntityScope();
   const refresh = useRefreshFinance();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [accountId, setAccountId] = useState(card.account_id ?? "");
   const [paidAt, setPaidAt] = useState(todayIso());
+  const hasPaymentAccount = data.accounts.some((a) => a.active && a.entity_id === card.entity_id);
 
   const submit = async () => {
     if (!canWrite) { toast.error("Seu acesso é somente leitura."); return; }
     const account = accountId || card.account_id;
     if (!account) { toast.error("Selecione a conta de pagamento."); return; }
+    if (!data.accounts.some((a) => a.id === account && a.active && a.entity_id === card.entity_id)) {
+      toast.error("Selecione uma conta ativa da mesma pessoa ou empresa do cartão.");
+      return;
+    }
     setBusy(true);
     const { error } = await supabase.rpc("pay_credit_card_installment", {
       p_installment_id: installment.id,
@@ -205,10 +221,11 @@ export function PayInstallmentDialog({
           paidAt={paidAt}
           setPaidAt={setPaidAt}
           defaultAccountId={card.account_id}
+          entityId={card.entity_id}
         />
         <DialogFooter>
           <Button variant="ghost" onClick={() => setOpen(false)}>Cancelar</Button>
-          <Button onClick={submit} disabled={busy}>{busy ? "Pagando…" : "Pagar parcela"}</Button>
+          <Button onClick={submit} disabled={busy || !hasPaymentAccount}>{busy ? "Pagando…" : "Pagar parcela"}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
