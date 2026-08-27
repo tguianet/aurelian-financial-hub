@@ -21,6 +21,13 @@ type AdvisorBody = {
   history?: AdvisorHistoryItem[];
 };
 
+type AdvisorQuota = {
+  allowed?: boolean;
+  hour_remaining?: number;
+  day_remaining?: number;
+  retry_after_seconds?: number;
+};
+
 function envValue(key: string) {
   const processValue = typeof process !== "undefined" ? process.env?.[key] : undefined;
   if (processValue) return processValue;
@@ -38,18 +45,20 @@ function textFromResponse(payload: any): string | null {
   return null;
 }
 
-async function verifyUser(request: Request) {
+async function authenticatedClient(request: Request) {
   const auth = request.headers.get("authorization") ?? "";
-  if (!auth.startsWith("Bearer ")) return false;
+  if (!auth.startsWith("Bearer ")) return null;
   const url = envValue("SUPABASE_URL") || envValue("VITE_SUPABASE_URL");
   const key = envValue("SUPABASE_PUBLISHABLE_KEY") || envValue("VITE_SUPABASE_PUBLISHABLE_KEY");
-  if (!url || !key) return false;
+  if (!url || !key) return null;
+
   const supabase = createClient(url, key, {
     global: { headers: { Authorization: auth } },
     auth: { persistSession: false, autoRefreshToken: false, storage: undefined },
   });
   const { data, error } = await supabase.auth.getUser();
-  return !error && Boolean(data.user);
+  if (error || !data.user) return null;
+  return { supabase, user: data.user };
 }
 
 function sanitizeContext(context: AdvisorContext | undefined) {
@@ -81,7 +90,8 @@ export const Route = createFileRoute("/api/finance/advisor")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        if (!(await verifyUser(request))) {
+        const authContext = await authenticatedClient(request);
+        if (!authContext) {
           return Response.json({ message: "Sessão inválida." }, { status: 401 });
         }
 
@@ -102,6 +112,29 @@ export const Route = createFileRoute("/api/finance/advisor")({
           return Response.json({ message: "Contexto financeiro ausente." }, { status: 400 });
         }
         const history = sanitizeHistory(body.history);
+
+        const quotaResult = await authContext.supabase.rpc("consume_finance_advisor_quota", {
+          p_hour_limit: 30,
+          p_day_limit: 100,
+        });
+        if (quotaResult.error) {
+          console.error(`[Advisor quota] ${quotaResult.error.message}`);
+          return Response.json({ message: "Não foi possível validar o limite de uso do Consultor IA." }, { status: 503 });
+        }
+
+        const quota = (quotaResult.data ?? {}) as AdvisorQuota;
+        if (quota.allowed !== true) {
+          const retryAfter = Math.max(1, Number(quota.retry_after_seconds ?? 60));
+          return Response.json(
+            {
+              message: "Limite temporário do Consultor IA atingido. Tente novamente mais tarde.",
+              retryAfter,
+              hourRemaining: Number(quota.hour_remaining ?? 0),
+              dayRemaining: Number(quota.day_remaining ?? 0),
+            },
+            { status: 429, headers: { "Retry-After": String(retryAfter) } },
+          );
+        }
 
         const apiKey = envValue("OPENAI_API_KEY");
         if (!apiKey) {
@@ -144,7 +177,15 @@ export const Route = createFileRoute("/api/finance/advisor")({
           return Response.json({ message: "O Consultor IA não retornou uma resposta válida." }, { status: 502 });
         }
 
-        return Response.json({ answer, source: "openai", model });
+        return Response.json({
+          answer,
+          source: "openai",
+          model,
+          usage: {
+            hourRemaining: Number(quota.hour_remaining ?? 0),
+            dayRemaining: Number(quota.day_remaining ?? 0),
+          },
+        });
       },
     },
   },
