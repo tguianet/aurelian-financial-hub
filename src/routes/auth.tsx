@@ -43,10 +43,15 @@ function AuthPage() {
       }
     };
     void restore();
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (active && session) void navigate({ to: "/dashboard", replace: true });
+    });
     return () => {
       active = false;
+      sub.subscription.unsubscribe();
     };
   }, [navigate]);
+
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
