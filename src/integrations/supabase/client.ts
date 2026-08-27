@@ -27,17 +27,28 @@ function createSupabaseFetch(supabaseKey: string): typeof fetch {
   };
 }
 
+function serverEnv(key: string): string | undefined {
+  if (typeof process === 'undefined' || !process.env) return undefined;
+  const value = process.env[key];
+  return typeof value === 'string' && value ? value : undefined;
+}
+
+function viteEnv(key: string): string | undefined {
+  const value = import.meta.env[key];
+  return typeof value === 'string' && value ? value : undefined;
+}
 
 function createSupabaseClient() {
-  // Use import.meta.env for client-side (Vite build-time replacement)
-  // Fall back to process.env for SSR (server-side rendering)
-  const SUPABASE_URL = import.meta.env['VITE_SUPABASE_URL'] || process.env['SUPABASE_URL'];
-  const SUPABASE_PUBLISHABLE_KEY = import.meta.env['VITE_SUPABASE_PUBLISHABLE_KEY'] || process.env['SUPABASE_PUBLISHABLE_KEY'];
+  // Browser/mobile must never assume Node's `process` global exists.
+  // Lovable injects VITE_* into the client bundle; process.env is SSR-only fallback.
+  const SUPABASE_URL = viteEnv('VITE_SUPABASE_URL') ?? serverEnv('SUPABASE_URL');
+  const SUPABASE_PUBLISHABLE_KEY =
+    viteEnv('VITE_SUPABASE_PUBLISHABLE_KEY') ?? serverEnv('SUPABASE_PUBLISHABLE_KEY');
 
   if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
     const missing = [
-      ...(!SUPABASE_URL ? ['SUPABASE_URL'] : []),
-      ...(!SUPABASE_PUBLISHABLE_KEY ? ['SUPABASE_PUBLISHABLE_KEY'] : []),
+      ...(!SUPABASE_URL ? ['VITE_SUPABASE_URL'] : []),
+      ...(!SUPABASE_PUBLISHABLE_KEY ? ['VITE_SUPABASE_PUBLISHABLE_KEY'] : []),
     ];
     const message = `Missing Supabase environment variable(s): ${missing.join(', ')}. Connect Supabase in Lovable Cloud.`;
     console.error(`[Supabase] ${message}`);
@@ -52,7 +63,7 @@ function createSupabaseClient() {
       storage: brokeredPreviewStorage(),
       persistSession: true,
       autoRefreshToken: true,
-    }
+    },
   });
 }
 
@@ -66,4 +77,3 @@ export const supabase = new Proxy({} as ReturnType<typeof createSupabaseClient>,
     return Reflect.get(_supabase, prop, receiver);
   },
 });
-
