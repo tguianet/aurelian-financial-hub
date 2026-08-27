@@ -8,6 +8,18 @@ import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
 export default defineConfig({
   vite: {
+    // The hosted production builder currently exposes the server-side Cloud
+    // binding but omits its VITE_* aliases from browser chunks. These values
+    // are intentionally public (project API URL + publishable browser key), so
+    // define them here to keep production auth independent of that aliasing.
+    define: {
+      "import.meta.env.VITE_SUPABASE_URL": JSON.stringify(
+        "https://ttdptefgoooenpuicxvv.supabase.co",
+      ),
+      "import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY": JSON.stringify(
+        "sb_publishable_I4RBxRqlQhvMRiLK6v-yYA_pz74xbWu",
+      ),
+    },
     build: {
       // Avoid shipping syntax that older iOS Safari / Android WebViews may not parse.
       target: "es2020",
