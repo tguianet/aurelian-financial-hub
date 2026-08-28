@@ -57,10 +57,7 @@ export function TransactionDialog() {
   const isCreditPurchase = kind === "expense" && method === "credit";
   const accounts = data.accounts.filter((a) => !entityId || a.entity_id === entityId);
   const categories = kind === "transfer" ? [] : selectableCategories(data.categories, kind);
-  const cards = useMemo(
-    () => data.cards.filter((c) => c.active !== false),
-    [data.cards],
-  );
+  const cards = useMemo(() => data.cards.filter((c) => c.active !== false), [data.cards]);
 
   useEffect(() => {
     if (kind !== "expense" && method === "credit") setMethod("pix");
@@ -83,14 +80,6 @@ export function TransactionDialog() {
     setInstallments("1");
   };
 
-  const selectCard = (nextCardId: string) => {
-    setCardId(nextCardId);
-    const card = cards.find((item) => item.id === nextCardId);
-    if (!card) return;
-    setEntityId(card.entity_id);
-    setAccountId("");
-  };
-
   const submit = async () => {
     const fail = (m: string): void => { toast.error(m); };
     if (!user) return fail("Sua sessão expirou. Entre novamente.");
@@ -105,7 +94,6 @@ export function TransactionDialog() {
       if (!cardId) return fail("Escolha o cartão usado.");
       const selectedCard = cards.find((c) => c.id === cardId);
       if (!selectedCard) return fail("Escolha um cartão ativo.");
-      if (selectedCard.entity_id !== entityId) return fail("O cartão precisa pertencer à pessoa ou empresa da movimentação.");
       const count = Math.max(1, Number(installments) || 1);
       if (count < 1 || count > 48) return fail("Escolha entre 1 e 48 parcelas.");
       setBusy(true);
@@ -117,13 +105,14 @@ export function TransactionDialog() {
         _total_amount: value,
         _purchase_date: competence,
         _installments: count,
+        _entity_id: entityId,
       } as never);
       setBusy(false);
       if (error) {
         toast.error(error.message);
         return;
       }
-      toast.success("Compra registrada. Quando você pagar a fatura, o Aurelian não vai contar essa despesa novamente.");
+      toast.success("Compra registrada na empresa escolhida. A fatura continua no cartão usado, sem duplicar a despesa.");
       reset();
       setCardId("");
       setOpen(false);
@@ -204,15 +193,13 @@ export function TransactionDialog() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button className="gap-2">
-          <Plus className="size-4" /> Registrar manualmente
-        </Button>
+        <Button className="gap-2"><Plus className="size-4" /> Registrar manualmente</Button>
       </DialogTrigger>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Registrar movimentação</DialogTitle>
           <DialogDescription>
-            Preencha só o que aconteceu. O Aurelian cuida das regras por trás para não duplicar despesas nem transferências entre suas próprias contas.
+            Preencha só o que aconteceu. Em compras no cartão, a empresa da despesa pode ser diferente do titular do cartão.
           </DialogDescription>
         </DialogHeader>
 
@@ -228,11 +215,11 @@ export function TransactionDialog() {
             </Select>
           </Field>
 
-          <Field label="De quem é essa movimentação?">
+          <Field label={isCreditPurchase ? "Qual empresa fez essa compra?" : "De quem é essa movimentação?"}>
             <Select value={entityId} onValueChange={(value) => { setEntityId(value); setAccountId(""); }}>
               <SelectTrigger><SelectValue placeholder="Escolha" /></SelectTrigger>
               <SelectContent>
-                {data.entities.map((e) => (
+                {data.entities.filter((e) => e.active).map((e) => (
                   <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>
                 ))}
               </SelectContent>
@@ -243,30 +230,20 @@ export function TransactionDialog() {
             <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Ex.: compra de carne, conta de energia, comissão recebida" />
           </Field>
 
-          <Field label="Quanto?">
-            <Input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" placeholder="0,00" />
-          </Field>
+          <Field label="Quanto?"><Input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" placeholder="0,00" /></Field>
 
           <Field label="Onde isso se encaixa?">
             <Select value={categoryId} onValueChange={setCategoryId} disabled={kind === "transfer"}>
               <SelectTrigger><SelectValue placeholder={kind === "transfer" ? "Não precisa" : "Escolha a categoria"} /></SelectTrigger>
-              <SelectContent>
-                {categories.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                ))}
-              </SelectContent>
+              <SelectContent>{categories.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
             </Select>
           </Field>
 
           {isCreditPurchase ? null : (
-            <Field label={kind === "income" ? "Em qual conta entrou?" : kind === "transfer" ? "De qual conta saiu?" : "De qual conta saiu?"}>
+            <Field label={kind === "income" ? "Em qual conta entrou?" : "De qual conta saiu?"}>
               <Select value={accountId} onValueChange={setAccountId}>
                 <SelectTrigger><SelectValue placeholder="Escolha" /></SelectTrigger>
-                <SelectContent>
-                  {accounts.map((a) => (
-                    <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
-                  ))}
-                </SelectContent>
+                <SelectContent>{accounts.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent>
               </Select>
             </Field>
           )}
@@ -275,13 +252,7 @@ export function TransactionDialog() {
             <Field label="Para qual conta foi?">
               <Select value={toAccountId} onValueChange={setToAccountId}>
                 <SelectTrigger><SelectValue placeholder="Escolha" /></SelectTrigger>
-                <SelectContent>
-                  {data.accounts
-                    .filter((a) => a.id !== accountId)
-                    .map((a) => (
-                      <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
-                    ))}
-                </SelectContent>
+                <SelectContent>{data.accounts.filter((a) => a.id !== accountId).map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent>
               </Select>
             </Field>
           ) : (
@@ -302,32 +273,22 @@ export function TransactionDialog() {
           )}
 
           {isCreditPurchase ? (
-            <Field label="Qual cartão?" className="sm:col-span-2">
-              <Select value={cardId} onValueChange={selectCard}>
+            <Field label="Qual cartão foi usado?" className="sm:col-span-2">
+              <Select value={cardId} onValueChange={setCardId}>
                 <SelectTrigger><SelectValue placeholder={cards.length > 0 ? "Escolha o cartão" : "Nenhum cartão ativo cadastrado"} /></SelectTrigger>
                 <SelectContent>
                   {cards.map((c) => {
-                    const entity = data.entities.find((item) => item.id === c.entity_id);
-                    return (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.name}{c.brand ? ` · ${c.brand}` : ""}{entity ? ` · ${entity.name}` : ""}
-                      </SelectItem>
-                    );
+                    const owner = data.entities.find((item) => item.id === c.entity_id);
+                    return <SelectItem key={c.id} value={c.id}>{c.name}{c.brand ? ` · ${c.brand}` : ""}{owner ? ` · titular ${owner.name}` : ""}</SelectItem>;
                   })}
                 </SelectContent>
               </Select>
-              {cards.length === 0 ? <p className="mt-1.5 text-xs text-muted-foreground">Cadastre ou reative um cartão em Meus cartões.</p> : null}
+              <p className="mt-1.5 text-xs text-muted-foreground">O cartão pode ser usado por qualquer empresa. A despesa será atribuída à empresa escolhida acima.</p>
             </Field>
           ) : null}
 
-          <Field label={isCreditPurchase ? "Quando comprou?" : "Quando aconteceu?"}>
-            <Input type="date" value={competence} onChange={(e) => setCompetence(e.target.value)} />
-          </Field>
-          {isCreditPurchase ? null : (
-            <Field label="Quando vence?">
-              <Input type="date" value={due} onChange={(e) => setDue(e.target.value)} />
-            </Field>
-          )}
+          <Field label={isCreditPurchase ? "Quando comprou?" : "Quando aconteceu?"}><Input type="date" value={competence} onChange={(e) => setCompetence(e.target.value)} /></Field>
+          {isCreditPurchase ? null : <Field label="Quando vence?"><Input type="date" value={due} onChange={(e) => setDue(e.target.value)} /></Field>}
 
           {isCreditPurchase || recurrence !== "none" ? null : (
             <Field label={kind === "income" ? "Já recebeu?" : kind === "expense" ? "Já pagou?" : "Situação"}>
@@ -356,43 +317,21 @@ export function TransactionDialog() {
             </Field>
           )}
 
-          {isCreditPurchase || recurrence !== "none" ? null : (
-            <Field label="Foi parcelado? Quantas vezes?">
-              <Input type="number" min={1} max={48} value={installments} onChange={(e) => setInstallments(e.target.value)} />
-            </Field>
-          )}
+          {isCreditPurchase || recurrence !== "none" ? null : <Field label="Foi parcelado? Quantas vezes?"><Input type="number" min={1} max={48} value={installments} onChange={(e) => setInstallments(e.target.value)} /></Field>}
+          {isCreditPurchase ? <Field label="Parcelas"><Input type="number" min={1} max={48} value={installments} onChange={(e) => setInstallments(e.target.value)} /></Field> : null}
 
-          <Field label="Quer deixar alguma observação?" className="sm:col-span-2">
-            <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Opcional" />
-          </Field>
+          <Field label="Quer deixar alguma observação?" className="sm:col-span-2"><Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Opcional" /></Field>
         </div>
 
         <DialogFooter>
           <Button variant="ghost" onClick={() => setOpen(false)}>Cancelar</Button>
-          <Button onClick={submit} disabled={busy || !canWrite}>
-            {isCreditPurchase ? "Salvar compra" : recurrence !== "none" ? "Salvar compromisso" : "Salvar movimentação"}
-          </Button>
+          <Button onClick={submit} disabled={busy || !canWrite}>{isCreditPurchase ? "Salvar compra" : recurrence !== "none" ? "Salvar compromisso" : "Salvar movimentação"}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
 
-function Field({
-  label,
-  children,
-  className,
-}: {
-  label: string;
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <div className={className}>
-      <Label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-        {label}
-      </Label>
-      {children}
-    </div>
-  );
+function Field({ label, children, className }: { label: string; children: React.ReactNode; className?: string }) {
+  return <div className={className}><Label className="mb-1.5 block text-xs font-medium text-muted-foreground">{label}</Label>{children}</div>;
 }
