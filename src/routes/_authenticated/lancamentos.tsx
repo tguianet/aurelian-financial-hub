@@ -50,13 +50,13 @@ type HistoryItem = {
   kind: "income" | "expense" | "transfer";
   description: string;
   amount: number;
-  entityId: string;
   entityName: string;
   categoryName: string;
   accountLabel: string;
   paymentLabel: string;
   statusLabel: string;
   statusTone: string;
+  contributesToResult: boolean;
   transaction?: Transaction;
 };
 
@@ -114,13 +114,13 @@ function Lancamentos() {
         kind: t.kind,
         description: t.description,
         amount: Number(t.amount),
-        entityId: t.entity_id,
         entityName: entity?.name ?? "—",
         categoryName: category?.name ?? (t.kind === "transfer" ? "Entre contas" : "—"),
         accountLabel: `${account?.name ?? "—"}${toAccount ? ` → ${toAccount.name}` : ""}`,
         paymentLabel: PAYMENT_LABEL[t.payment_method] ?? t.payment_method,
         statusLabel: STATUS_LABEL[shownStatus as keyof typeof STATUS_LABEL] ?? shownStatus,
         statusTone: shownStatus,
+        contributesToResult: t.status !== "cancelled" && t.kind !== "transfer" && !t.deleted_at,
         transaction: t,
       }];
     });
@@ -129,12 +129,35 @@ function Lancamentos() {
       if (!scope.matchesEntity(purchase.entity_id)) return [];
       if (purchase.purchase_date < from || purchase.purchase_date > to) return [];
       if (kindFilter !== "all" && kindFilter !== "expense") return [];
-      if (statusFilter !== "all" && statusFilter !== "paid") return [];
       if (normalizedTerm && !purchase.description.toLowerCase().includes(normalizedTerm)) return [];
+
+      const installments = data.installments.filter((item) => item.purchase_id === purchase.id);
+      const activeInstallments = installments.filter((item) => item.status !== "cancelled");
+      const hasOverdue = activeInstallments.some((item) => item.status === "overdue");
+      const paidCount = activeInstallments.filter((item) => item.status === "paid").length;
+      const openCount = activeInstallments.filter((item) => item.status === "pending" || item.status === "overdue").length;
+      const allCancelled = installments.length > 0 && activeInstallments.length === 0;
+      const fullyPaid = activeInstallments.length > 0 && openCount === 0 && paidCount === activeInstallments.length;
+
+      const derivedStatus = allCancelled ? "cancelled" : hasOverdue ? "overdue" : fullyPaid ? "paid" : "pending";
+      if (statusFilter !== "all" && statusFilter !== derivedStatus) return [];
 
       const entity = data.entities.find((e) => e.id === purchase.entity_id);
       const category = data.categories.find((c) => c.id === purchase.category_id);
       const card = data.cards.find((c) => c.id === purchase.credit_card_id);
+      const statusLabel = allCancelled
+        ? "Parcelas canceladas"
+        : fullyPaid
+          ? "Fatura quitada"
+          : hasOverdue
+            ? paidCount > 0
+              ? `Fatura parcial · ${paidCount}/${activeInstallments.length} pagas · há atraso`
+              : "Fatura em atraso"
+            : paidCount > 0
+              ? `Fatura parcial · ${paidCount}/${activeInstallments.length} pagas`
+              : purchase.installments > 1
+                ? `${purchase.installments}x · fatura pendente`
+                : "Fatura pendente";
 
       return [{
         id: `card-${purchase.id}`,
@@ -143,13 +166,13 @@ function Lancamentos() {
         kind: "expense",
         description: purchase.description,
         amount: Number(purchase.total_amount),
-        entityId: purchase.entity_id,
         entityName: entity?.name ?? "—",
         categoryName: category?.name ?? "—",
         accountLabel: card?.name ?? "Cartão",
         paymentLabel: "Cartão de crédito",
-        statusLabel: purchase.installments > 1 ? `${purchase.installments}x no cartão` : "Compra no cartão",
-        statusTone: "card",
+        statusLabel,
+        statusTone: derivedStatus,
+        contributesToResult: !allCancelled,
       }];
     });
 
@@ -163,12 +186,15 @@ function Lancamentos() {
       current.push(item);
       groups.set(item.date, current);
     }
-    return Array.from(groups.entries()).map(([date, items]) => ({
-      date,
-      items,
-      income: items.filter((item) => item.kind === "income").reduce((sum, item) => sum + item.amount, 0),
-      expense: items.filter((item) => item.kind === "expense").reduce((sum, item) => sum + item.amount, 0),
-    }));
+    return Array.from(groups.entries()).map(([date, items]) => {
+      const economicItems = items.filter((item) => item.contributesToResult);
+      return {
+        date,
+        items,
+        income: economicItems.filter((item) => item.kind === "income").reduce((sum, item) => sum + item.amount, 0),
+        expense: economicItems.filter((item) => item.kind === "expense").reduce((sum, item) => sum + item.amount, 0),
+      };
+    });
   }, [historyItems]);
 
   const cancel = async (t: Transaction) => {
@@ -226,7 +252,7 @@ function Lancamentos() {
           <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Qualquer situação</SelectItem>
-            <SelectItem value="paid">Já pago</SelectItem>
+            <SelectItem value="paid">Já pago / quitado</SelectItem>
             <SelectItem value="received">Já recebido</SelectItem>
             <SelectItem value="pending">Ainda pendente</SelectItem>
             <SelectItem value="overdue">Atrasado</SelectItem>
@@ -347,7 +373,7 @@ function Lancamentos() {
                   <div key={item.id} className="grid gap-3 px-4 py-3 text-sm hover:bg-surface md:grid-cols-[minmax(220px,1.6fr)_1fr_1fr_1fr_auto] md:items-center">
                     <div>
                       <div className="flex items-center gap-2">
-                        <p className={item.transaction?.status === "cancelled" ? "line-through opacity-60" : "font-medium"}>{item.description}</p>
+                        <p className={item.transaction?.status === "cancelled" || item.statusTone === "cancelled" ? "line-through opacity-60" : "font-medium"}>{item.description}</p>
                         {item.type === "card_purchase" ? (
                           <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-primary">Cartão</span>
                         ) : null}
@@ -360,10 +386,18 @@ function Lancamentos() {
                       {item.type === "transaction" && item.transaction ? (
                         <StatusPill status={item.transaction.status} dueDate={item.transaction.due_date ?? item.transaction.competence_date} />
                       ) : (
-                        <span className="rounded-md bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">{item.statusLabel}</span>
+                        <span className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${
+                          item.statusTone === "paid"
+                            ? "bg-success/15 text-success"
+                            : item.statusTone === "overdue"
+                              ? "bg-destructive/15 text-destructive"
+                              : item.statusTone === "cancelled"
+                                ? "bg-muted text-muted-foreground"
+                                : "bg-warning/15 text-warning"
+                        }`}>{item.statusLabel}</span>
                       )}
                     </div>
-                    <div className={`num text-right font-semibold ${item.kind === "income" ? "text-success" : item.kind === "expense" ? "text-destructive" : "text-muted-foreground"}`}>
+                    <div className={`num text-right font-semibold ${!item.contributesToResult ? "text-muted-foreground line-through" : item.kind === "income" ? "text-success" : item.kind === "expense" ? "text-destructive" : "text-muted-foreground"}`}>
                       {item.kind === "expense" ? "−" : item.kind === "income" ? "+" : "↔"} {brl(item.amount)}
                     </div>
                   </div>
