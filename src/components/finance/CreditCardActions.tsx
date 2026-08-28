@@ -59,7 +59,7 @@ function NewCardDialog() {
 
   const submit = async () => {
     if (!user) { toast.error("Sessão expirada."); return; }
-    if (!ownerEntityId) { toast.error("Selecione a entidade."); return; }
+    if (!ownerEntityId) { toast.error("Selecione a entidade titular do cartão."); return; }
     if (!name.trim()) { toast.error("Informe o nome do cartão."); return; }
     const creditLimit = parseMoney(limit);
     const close = Number(closingDay);
@@ -88,7 +88,7 @@ function NewCardDialog() {
     setName("");
     setBrand("");
     setLimit("0,00");
-    toast.success("Cartão criado.");
+    toast.success("Cartão criado. Ele poderá ser usado nas outras empresas também.");
     refresh();
   };
 
@@ -103,22 +103,22 @@ function NewCardDialog() {
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Novo cartão</DialogTitle>
-          <DialogDescription>Cadastre limite, fechamento e vencimento para projetar as faturas.</DialogDescription>
+          <DialogDescription>Defina o titular e a conta que normalmente paga a fatura. As compras poderão pertencer a qualquer empresa.</DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-2">
-          <Field label="Entidade">
+          <Field label="Titular do cartão">
             <Select value={ownerEntityId} onValueChange={(value) => { setOwnerEntityId(value); setAccountId(""); }}>
               <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
               <SelectContent>{data.entities.filter((e) => e.active).map((e) => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}</SelectContent>
             </Select>
           </Field>
-          <Field label="Conta de pagamento">
+          <Field label="Conta padrão para pagar a fatura">
             <Select value={accountId} onValueChange={setAccountId}>
               <SelectTrigger><SelectValue placeholder="Opcional" /></SelectTrigger>
               <SelectContent>{accounts.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent>
             </Select>
           </Field>
-          <Field label="Nome"><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Nubank Pessoal" /></Field>
+          <Field label="Nome"><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Nubank" /></Field>
           <Field label="Bandeira"><Input value={brand} onChange={(e) => setBrand(e.target.value)} placeholder="Ex.: Mastercard" /></Field>
           <Field label="Limite"><Input value={limit} onChange={(e) => setLimit(e.target.value)} inputMode="decimal" /></Field>
           <div className="grid grid-cols-2 gap-3">
@@ -132,18 +132,13 @@ function NewCardDialog() {
   );
 }
 
-export function NewPurchaseDialog({
-  defaultCardId,
-  children,
-}: {
-  defaultCardId?: string;
-  children?: ReactNode;
-}) {
+export function NewPurchaseDialog({ defaultCardId, children }: { defaultCardId?: string; children?: ReactNode }) {
   const { data, entityId } = useEntityScope();
   const { canWrite } = useFinanceAccess();
   const refresh = useRefreshFinance();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [purchaseEntityId, setPurchaseEntityId] = useState(entityId === "all" ? "" : entityId);
   const [cardId, setCardId] = useState(defaultCardId ?? "");
   const [categoryId, setCategoryId] = useState("");
   const [description, setDescription] = useState("");
@@ -151,18 +146,18 @@ export function NewPurchaseDialog({
   const [purchaseDate, setPurchaseDate] = useState(todayIso());
   const [installments, setInstallments] = useState("1");
 
-  const cards = useMemo(
-    () => data.cards.filter((c) => c.active && (entityId === "all" || c.entity_id === entityId)),
-    [data.cards, entityId],
-  );
+  const cards = useMemo(() => data.cards.filter((c) => c.active), [data.cards]);
   const categories = selectableCategories(data.categories, "expense");
 
   useEffect(() => {
-    if (open && defaultCardId) setCardId(defaultCardId);
-  }, [open, defaultCardId]);
+    if (!open) return;
+    if (defaultCardId) setCardId(defaultCardId);
+    if (entityId !== "all") setPurchaseEntityId(entityId);
+  }, [open, defaultCardId, entityId]);
 
   const submit = async () => {
     if (!canWrite) { toast.error("Seu acesso é somente leitura."); return; }
+    if (!purchaseEntityId) { toast.error("Selecione a empresa responsável pela compra."); return; }
     if (!cardId) { toast.error("Selecione o cartão."); return; }
     if (!description.trim()) { toast.error("Informe a descrição."); return; }
     const total = parseMoney(amount);
@@ -179,6 +174,7 @@ export function NewPurchaseDialog({
       _total_amount: total,
       _purchase_date: purchaseDate,
       _installments: count,
+      _entity_id: purchaseEntityId,
     } as never);
     setBusy(false);
 
@@ -188,7 +184,7 @@ export function NewPurchaseDialog({
     setDescription("");
     setAmount("");
     setInstallments("1");
-    toast.success("Compra lançada. A despesa entra na data da compra; pagar a fatura não conta de novo.");
+    toast.success("Compra lançada para a empresa escolhida. O cartão e a fatura continuam únicos.");
     refresh();
   };
 
@@ -196,21 +192,26 @@ export function NewPurchaseDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {children ?? <Button className="gap-2"><Plus className="size-4" /> Nova compra</Button>}
-      </DialogTrigger>
+      <DialogTrigger asChild>{children ?? <Button className="gap-2"><Plus className="size-4" /> Nova compra</Button>}</DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Nova compra no cartão</DialogTitle>
-          <DialogDescription>
-            Despesa econômica na data da compra. Parcelas entram na projeção até serem pagas. O pagamento da fatura só move caixa.
-          </DialogDescription>
+          <DialogDescription>Use qualquer cartão ativo e escolha qual empresa deve receber a despesa. A fatura continua consolidada no mesmo cartão.</DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-2">
+          <Field label="Empresa responsável pela compra">
+            <Select value={purchaseEntityId} onValueChange={setPurchaseEntityId}>
+              <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+              <SelectContent>{data.entities.filter((e) => e.active).map((e) => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}</SelectContent>
+            </Select>
+          </Field>
           <Field label="Cartão">
             <Select value={cardId} onValueChange={setCardId}>
               <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-              <SelectContent>{cards.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
+              <SelectContent>{cards.map((c) => {
+                const owner = data.entities.find((e) => e.id === c.entity_id);
+                return <SelectItem key={c.id} value={c.id}>{c.name}{owner ? ` · titular ${owner.name}` : ""}</SelectItem>;
+              })}</SelectContent>
             </Select>
           </Field>
           <Field label="Descrição"><Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Ex.: Notebook" /></Field>
