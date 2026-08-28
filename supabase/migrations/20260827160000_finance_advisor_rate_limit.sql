@@ -28,6 +28,9 @@ DECLARE
   v_hour_start timestamptz := date_trunc('hour', v_now);
   v_today date := CURRENT_DATE;
   v_row public.finance_advisor_usage%ROWTYPE;
+  v_hour_blocked boolean := false;
+  v_day_blocked boolean := false;
+  v_retry_after integer := 0;
 BEGIN
   IF v_user_id IS NULL THEN
     RAISE EXCEPTION 'sessao invalida';
@@ -55,7 +58,10 @@ BEGIN
     v_row.day_count := 0;
   END IF;
 
-  IF v_row.hour_count >= p_hour_limit OR v_row.day_count >= p_day_limit THEN
+  v_hour_blocked := v_row.hour_count >= p_hour_limit;
+  v_day_blocked := v_row.day_count >= p_day_limit;
+
+  IF v_hour_blocked OR v_day_blocked THEN
     UPDATE public.finance_advisor_usage
     SET hour_window_start = v_row.hour_window_start,
         hour_count = v_row.hour_count,
@@ -64,11 +70,24 @@ BEGIN
         updated_at = v_now
     WHERE user_id = v_user_id;
 
+    IF v_day_blocked THEN
+      v_retry_after := GREATEST(
+        1,
+        EXTRACT(EPOCH FROM (((v_today + 1)::timestamp AT TIME ZONE current_setting('TIMEZONE')) - v_now))::integer
+      );
+    ELSE
+      v_retry_after := GREATEST(
+        1,
+        EXTRACT(EPOCH FROM ((v_hour_start + interval '1 hour') - v_now))::integer
+      );
+    END IF;
+
     RETURN jsonb_build_object(
       'allowed', false,
       'hour_remaining', GREATEST(p_hour_limit - v_row.hour_count, 0),
       'day_remaining', GREATEST(p_day_limit - v_row.day_count, 0),
-      'retry_after_seconds', GREATEST(1, EXTRACT(EPOCH FROM ((v_hour_start + interval '1 hour') - v_now))::integer)
+      'retry_after_seconds', v_retry_after,
+      'limit_type', CASE WHEN v_day_blocked THEN 'day' ELSE 'hour' END
     );
   END IF;
 
@@ -87,7 +106,8 @@ BEGIN
     'allowed', true,
     'hour_remaining', GREATEST(p_hour_limit - v_row.hour_count, 0),
     'day_remaining', GREATEST(p_day_limit - v_row.day_count, 0),
-    'retry_after_seconds', 0
+    'retry_after_seconds', 0,
+    'limit_type', null
   );
 END;
 $$;
