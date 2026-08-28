@@ -16,6 +16,8 @@
  * - Saldo realizado: lançamentos liquidados + transfers (pagamento de cartão
  *   sem conta destino só debita a origem).
  * - Projeção / cardBills: parcelas `pending`/`overdue`. Ao pagar, saem da obrigação.
+ * - Em cartão compartilhado, a compra e suas parcelas pertencem à `entity_id`
+ *   da compra, não necessariamente ao titular físico do cartão.
  * - Ocorrências materializadas entram por `transactions`.
  * - A definição em `recurring_transactions` NÃO é somada de novo no mesmo horizonte.
  * - Projeção/caixa usam apenas datas ainda não materializadas a partir de `next_run`.
@@ -454,6 +456,16 @@ export function buildScope(data: FinanceDataset, entityId: string): Scope {
   };
 }
 
+export function installmentMatchesEntity(
+  data: FinanceDataset,
+  installment: CardInstallment,
+  entityId: string,
+): boolean {
+  if (entityId === ALL) return true;
+  const purchase = data.purchases.find((p) => p.id === installment.purchase_id);
+  return purchase?.entity_id === entityId;
+}
+
 /** Saldo realizado por conta. Transfer de fatura (sem destino) só debita a origem. */
 export function accountBalances(data: FinanceDataset): Map<string, number> {
   const map = new Map<string, number>();
@@ -468,8 +480,6 @@ export function accountBalances(data: FinanceDataset): Map<string, number> {
     } else if (t.kind === "expense" && t.account_id) {
       map.set(t.account_id, addMoney(map.get(t.account_id) ?? 0, -amount));
     } else if (t.kind === "transfer") {
-      // Transferência interna ou pagamento de fatura: debita origem.
-      // Destino ausente (card cash) = só caixa saindo, sem receita/despesa.
       if (t.account_id) map.set(t.account_id, addMoney(map.get(t.account_id) ?? 0, -amount));
       if (t.to_account_id) map.set(t.to_account_id, addMoney(map.get(t.to_account_id) ?? 0, amount));
     }
@@ -520,7 +530,6 @@ export function computeKpis(data: FinanceDataset, entityId: string, ref = today(
     const amount = roundMoney(Number(t.amount));
 
     if (t.kind === "transfer") {
-      // Nunca entra em receita/despesa. Pagamento de fatura também é transfer.
       if (isCardCashMovement(t)) continue;
       const inScope =
         (t.account_id && scope.accountIds.has(t.account_id)) ||
@@ -553,7 +562,7 @@ export function computeKpis(data: FinanceDataset, entityId: string, ref = today(
   }
 
   for (const p of data.purchases) {
-    if (!scope.matchesEntity(p.entity_id) || !scope.cardIds.has(p.credit_card_id)) continue;
+    if (!scope.matchesEntity(p.entity_id)) continue;
     if (monthKey(toDate(p.purchase_date)) === mk) expenseMonth = addMoney(expenseMonth, Number(p.total_amount));
   }
 
@@ -561,7 +570,7 @@ export function computeKpis(data: FinanceDataset, entityId: string, ref = today(
   let cardBills30 = 0;
   for (const i of data.installments) {
     if (i.status !== "pending" && i.status !== "overdue") continue;
-    if (!scope.cardIds.has(i.credit_card_id)) continue;
+    if (!installmentMatchesEntity(data, i, entityId)) continue;
     const amount = roundMoney(Number(i.amount));
     cardBills = addMoney(cardBills, amount);
     if (toDate(i.due_date) <= horizon) cardBills30 = addMoney(cardBills30, amount);
@@ -665,7 +674,7 @@ export function projection(data: FinanceDataset, entityId: string, ref = today()
     }
     for (const i of data.installments) {
       if (i.status !== "pending" && i.status !== "overdue") continue;
-      if (!scope.cardIds.has(i.credit_card_id)) continue;
+      if (!installmentMatchesEntity(data, i, entityId)) continue;
       if (toDate(i.due_date) > limit) continue;
       outflow = addMoney(outflow, Number(i.amount));
     }
@@ -765,7 +774,7 @@ export function categoryBreakdown(
     map.set(name, row);
   }
   for (const p of data.purchases) {
-    if (!scope.matchesEntity(p.entity_id) || !scope.cardIds.has(p.credit_card_id)) continue;
+    if (!scope.matchesEntity(p.entity_id)) continue;
     if (!inRange(p.purchase_date, from, to)) continue;
     const cat = data.categories.find((c) => c.id === p.category_id);
     const name = cat?.name ?? "Sem categoria";
@@ -776,8 +785,10 @@ export function categoryBreakdown(
   return [...map.values()].sort((a, b) => b.expense + b.income - (a.expense + a.income));
 }
 
-export function cardBill(data: FinanceDataset, cardId: string, ref = today()) {
-  const items = data.installments.filter((i) => i.credit_card_id === cardId);
+export function cardBill(data: FinanceDataset, cardId: string, ref = today(), entityId: string = ALL) {
+  const items = data.installments.filter(
+    (i) => i.credit_card_id === cardId && installmentMatchesEntity(data, i, entityId),
+  );
   const openItems = items.filter((i) => i.status === "pending" || i.status === "overdue");
   const mk = monthKey(ref);
   const nextRef = new Date(ref.getFullYear(), ref.getMonth() + 1, 1);
