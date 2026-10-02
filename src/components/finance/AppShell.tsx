@@ -21,6 +21,8 @@ import {
   Sparkles,
   BrainCircuit,
   Inbox,
+  MoreHorizontal,
+  ChevronDown,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
@@ -37,23 +39,30 @@ import { detectTransactionAnomalies } from "@/lib/finance-anomalies";
 
 const PRIMARY_NAV = [
   { to: "/dashboard", label: "Início", icon: LayoutDashboard },
-  { to: "/revisar", label: "Para revisar", icon: Inbox },
   { to: "/lancamentos", label: "Movimentações", icon: ArrowLeftRight },
   { to: "/contas", label: "Meu dinheiro", icon: Wallet },
-  { to: "/entidades", label: "Pessoas e empresas", icon: Building2 },
+  { to: "/pendencias", label: "Planejamento", icon: CalendarClock },
   { to: "/consultor", label: "Aurelian IA", icon: BrainCircuit },
 ] as const;
 
-const SECONDARY_NAV = [
-  { to: "/pendencias", label: "Contas a pagar e receber", icon: CalendarClock },
+const MONEY_NAV = [
+  { to: "/contas", label: "Contas", icon: Wallet },
   { to: "/cartoes", label: "Cartões", icon: CreditCard },
-  { to: "/documentos", label: "Documentos", icon: FolderOpen },
-  { to: "/recorrencias", label: "Pagamentos recorrentes", icon: Repeat2 },
-  { to: "/orcamento", label: "Planejamento mensal", icon: Target },
-  { to: "/reservas", label: "Dinheiro reservado", icon: PiggyBank },
-  { to: "/projecao", label: "Como meu dinheiro vai ficar", icon: LineChart },
+] as const;
+
+const PLANNING_NAV = [
+  { to: "/pendencias", label: "Pagar e receber", icon: CalendarClock },
+  { to: "/recorrencias", label: "Recorrências", icon: Repeat2 },
+  { to: "/orcamento", label: "Orçamento", icon: Target },
+  { to: "/reservas", label: "Reservas", icon: PiggyBank },
+  { to: "/projecao", label: "Projeção", icon: LineChart },
+] as const;
+
+const MORE_NAV = [
   { to: "/relatorios", label: "Relatórios", icon: FileBarChart },
-  { to: "/categorias", label: "Organização por categorias", icon: Tags },
+  { to: "/entidades", label: "Empresas e pessoas", icon: Building2 },
+  { to: "/categorias", label: "Categorias", icon: Tags },
+  { to: "/documentos", label: "Documentos", icon: FolderOpen },
   { to: "/familia", label: "Família", icon: Users },
   { to: "/whatsapp", label: "WhatsApp", icon: MessageCircle },
 ] as const;
@@ -93,15 +102,91 @@ function NavItem({ to, label, icon: Icon, onNavigate, badge }: { to: string; lab
   );
 }
 
+function NavGroup({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <details className="group mt-1">
+      <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between rounded-xl px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground">
+        <span>{title}</span>
+        <ChevronDown className="size-3.5 transition-transform group-open:rotate-180" />
+      </summary>
+      <div className="mt-1 flex flex-col gap-1 pl-2">{children}</div>
+    </details>
+  );
+}
+
 function NavList({ onNavigate, reviewCount = 0 }: { onNavigate?: () => void; reviewCount?: number }) {
   return (
     <nav className="flex flex-col gap-1">
-      {PRIMARY_NAV.map((item) => <NavItem key={item.to} {...item} badge={item.to === "/revisar" ? reviewCount : undefined} onNavigate={onNavigate} />)}
+      <NavItem {...PRIMARY_NAV[0]} onNavigate={onNavigate} />
+      <NavItem {...PRIMARY_NAV[1]} onNavigate={onNavigate} />
 
-      <div className="mt-5 px-3 pb-1 text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground/70">
-        Mais ferramentas
+      <NavGroup title="Meu dinheiro">
+        {MONEY_NAV.map((item) => <NavItem key={item.to} {...item} onNavigate={onNavigate} />)}
+      </NavGroup>
+
+      <NavGroup title="Planejamento">
+        {PLANNING_NAV.map((item) => <NavItem key={item.to} {...item} onNavigate={onNavigate} />)}
+      </NavGroup>
+
+      <NavItem {...PRIMARY_NAV[4]} onNavigate={onNavigate} />
+
+      <Link
+        to="/revisar"
+        onClick={onNavigate}
+        className="mt-3 flex min-h-11 items-center gap-3 rounded-xl border border-amber-500/20 bg-amber-500/5 px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-amber-500/10"
+      >
+        <Inbox className="size-4 shrink-0 text-amber-500" />
+        <span className="min-w-0 flex-1 truncate">Central de atenção</span>
+        {reviewCount > 0 ? (
+          <span className="num flex min-w-5 items-center justify-center rounded-full border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-amber-500">
+            {reviewCount > 99 ? "99+" : reviewCount}
+          </span>
+        ) : null}
+      </Link>
+
+      <NavGroup title="Mais">
+        {MORE_NAV.map((item) => <NavItem key={item.to} {...item} onNavigate={onNavigate} />)}
+      </NavGroup>
+    </nav>
+  );
+}
+
+function MobileBottomNav({ onRegister }: { onRegister: () => void }) {
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const items = [
+    { to: "/dashboard", label: "Início", icon: LayoutDashboard },
+    { to: "/lancamentos", label: "Movimentos", icon: ArrowLeftRight },
+    { to: "/pendencias", label: "Planejar", icon: CalendarClock },
+  ] as const;
+
+  return (
+    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/96 px-2 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden">
+      <div className="mx-auto grid max-w-lg grid-cols-5 items-end">
+        {items.slice(0, 2).map((item) => {
+          const Icon = item.icon;
+          const active = pathname === item.to;
+          return (
+            <Link key={item.to} to={item.to} className={cn("flex min-h-14 flex-col items-center justify-center gap-1 text-[10px]", active ? "text-primary" : "text-muted-foreground")}>
+              <Icon className="size-4" />
+              <span>{item.label}</span>
+            </Link>
+          );
+        })}
+
+        <button type="button" onClick={onRegister} className="relative -top-2 mx-auto flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg" aria-label="Registrar movimentação">
+          <Sparkles className="size-5" />
+        </button>
+
+        <Link to="/pendencias" className={cn("flex min-h-14 flex-col items-center justify-center gap-1 text-[10px]", pathname === "/pendencias" ? "text-primary" : "text-muted-foreground")}>
+          <CalendarClock className="size-4" />
+          <span>Planejar</span>
+        </Link>
+
+        <button type="button" onClick={() => document.getElementById("mobile-more-menu")?.click()} className="flex min-h-14 flex-col items-center justify-center gap-1 text-[10px] text-muted-foreground">
+          <MoreHorizontal className="size-4" />
+          <span>Mais</span>
+        </button>
       </div>
-      {SECONDARY_NAV.map((item) => <NavItem key={item.to} {...item} onNavigate={onNavigate} />)}
     </nav>
   );
 }
@@ -192,7 +277,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <div className="flex min-w-0 items-center gap-2">
               <Sheet open={open} onOpenChange={setOpen}>
                 <SheetTrigger asChild>
-                  <Button variant="ghost" size="icon" className="size-10 shrink-0 lg:hidden" aria-label="Abrir menu">
+                  <Button id="mobile-more-menu" variant="ghost" size="icon" className="size-10 shrink-0 lg:hidden" aria-label="Abrir menu">
                     <Menu className="size-5" />
                   </Button>
                 </SheetTrigger>
@@ -223,10 +308,12 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
         </header>
 
-        <main className="min-w-0 px-3 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:px-4 sm:py-6 md:px-6 md:py-8">
+        <main className="min-w-0 px-3 py-4 pb-[calc(5rem+env(safe-area-inset-bottom))] sm:px-4 sm:py-6 md:px-6 md:py-8 lg:pb-8">
           {children}
         </main>
       </div>
+
+      <MobileBottomNav onRegister={() => setQuickEntryOpen(true)} />
     </div>
   );
 }
